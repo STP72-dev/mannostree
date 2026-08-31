@@ -1,5 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { MannostreeConfig } from '../config/schema.js';
 import { GitEngine } from '../git/engine.js';
 import {
@@ -7,6 +9,21 @@ import {
   MannostreeError,
   WorktreeRecord,
 } from '../types/index.js';
+
+const execFileAsync = promisify(execFile);
+
+export type GhExecutor = (
+  args: string[],
+  cwd: string
+) => Promise<{ stdout: string; stderr: string }>;
+
+export async function defaultGhExecutor(
+  args: string[],
+  cwd: string
+): Promise<{ stdout: string; stderr: string }> {
+  const { stdout, stderr } = await execFileAsync('gh', args, { cwd });
+  return { stdout: stdout.trim(), stderr: stderr.trim() };
+}
 
 export interface PrOptions {
   title?: string;
@@ -27,11 +44,16 @@ export interface PrResult {
 }
 
 export class PublishEngine {
+  public ghExecutor: GhExecutor;
+
   constructor(
     public repoRoot: string,
     public config: MannostreeConfig,
-    public git: GitEngine
-  ) {}
+    public git: GitEngine,
+    ghExecutor?: GhExecutor
+  ) {
+    this.ghExecutor = ghExecutor || defaultGhExecutor;
+  }
 
   public assemblePrBody(worktreeFullPath: string, record: WorktreeRecord): string {
     const artifactRoot = path.join(worktreeFullPath, this.config.artifact_dir_name);
@@ -168,7 +190,7 @@ export class PublishEngine {
           ghArgs.push('--draft');
         }
 
-        const ghRes = await this.git.exec(['gh', ...ghArgs], worktreeFullPath);
+        const ghRes = await this.ghExecutor(ghArgs, worktreeFullPath);
         prUrl = ghRes.stdout.trim();
         const numMatch = prUrl.match(/\/pull\/(\d+)/);
         if (numMatch) {

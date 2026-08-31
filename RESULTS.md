@@ -1,46 +1,40 @@
-# Execution Results: Phase 5 Artifacts, Publishing, & Ecosystem Integration
+# Execution Results: Post-MVP Release-Readiness & GitHub CLI Verification
 
 ## Summary
-Successfully implemented Phase 5 Artifacts, Publishing, & Ecosystem Integration for **Mannostree**, delivering all planned features across the 5-phase roadmap with 100% backward compatibility:
-- **`pr <id> [--draft] [--title <text>] [--body-file <path>] [--push] [--dry-run]`**:
-  - Deterministically compiles PR body markdown from `.task/` and `RESULTS.md`.
-  - Operates in `prepare-only` mode by default, storing output in `.task/pr-body.md` without unexpected remote calls.
-  - Supports `--push` for remote git push and GitHub CLI (`gh pr create`) integration.
-  - Updates worktree metadata (`publish.pr_number`, `publish.pr_url`, `publish.published_at`, `lifecycle_state: 'PR_OPEN'`).
-- **`issue <id> [--from-issue <num>] [--title <text>] [--dry-run]`**:
-  - Associates GitHub issues with worktree workspaces and stamps `.task/task-contract.md`.
-- **`task <id> [--validate] [--summary]`**:
-  - Audits durable task artifacts and calculates completeness score (0..100%).
-- **`handoff <id> [--to <name>] [--notes <text>]`**:
-  - Produces structured workspace handoff reports for successor AI agents or human reviewers.
-- **Automated Test Suite**: 54/54 tests passing across 20 test suites (12 unit + 8 integration suites).
+Delivered the post-MVP release-readiness verification and code coverage subsystem for **Mannostree**:
+1. **GitHub CLI Adapter & `--push` Flow Verification**:
+   - Replaced accidental `git gh` prefix with safe, direct `GhAdapter` / `execFile` binary invocation.
+   - Added support for dependency injection of `GhExecutor` in `PublishEngine` and `MannostreeOrchestrator`.
+   - Verified `--push` publishing flow end-to-end: remote git push, argument formatting (`--head`, `--base`, `--title`, `--body-file`, `--draft`), PR URL/number parsing, and graceful error handling when `gh` is unavailable.
+2. **Vitest V8 Code Coverage System**:
+   - Integrated `@vitest/coverage-v8`.
+   - Added `npm run coverage` / `npm run test:coverage` scripts.
+   - Measured actual code coverage across all core modules.
+3. **Automated Test Results**:
+   - **57 / 57 tests passing across 21 test suites** in 1.15s.
+   - `npm run lint`: **0 type errors**.
+   - `npm run build`: **Clean compilation**.
 
 ## Files Changed / Added
-- `src/core/publish.ts`: Added `PublishEngine` for artifact-driven PR compilation and GitHub publishing.
-- `src/core/task.ts`: Added `TaskEngine` for artifact validation, issue linking, and handoff generation.
-- `src/core/orchestrator.ts`: Added `pr`, `issue`, `task`, `handoff` methods.
-- `src/cli/output.ts`: Added formatters `formatPrResult`, `formatIssueResult`, `formatTaskResult`, `formatHandoffResult`.
-- `src/cli/commands/pr.ts`: CLI PR command.
-- `src/cli/commands/issue.ts`: CLI issue command.
-- `src/cli/commands/task.ts`: CLI task command.
-- `src/cli/commands/handoff.ts`: CLI handoff command.
-- `src/cli/index.ts`: Registered Phase 5 commands.
-- `src/index.ts`: Exported `PublishEngine`, `TaskEngine`, and related types.
-- `tests/unit/publish.test.ts`: Unit tests for PR compilation and prepare-only execution.
-- `tests/unit/task.test.ts`: Unit tests for task validation, issue linking, and handoff generation.
-- `tests/integration/phase5.test.ts`: End-to-end integration tests for Phase 5 CLI commands.
+- `src/core/publish.ts`: Added `GhExecutor` type, `defaultGhExecutor`, and adapter injection in `PublishEngine`.
+- `src/core/orchestrator.ts`: Accepted optional `ghExecutor` in `MannostreeOrchestrator`.
+- `vitest.config.ts`: Added v8 coverage provider and reporter configuration.
+- `package.json`: Added `@vitest/coverage-v8` devDependency and `coverage` / `test:coverage` npm scripts.
+- `tests/unit/publish.test.ts`: Added unit tests for `--push` with mock `GhExecutor` and error fallback.
+- `tests/integration/publish-push.test.ts`: Added end-to-end integration test with mock `gh` executable on PATH.
+- Durable task artifacts (`.task/task-contract.md`, `.task/research.md`, `.task/solution-options.md`, `.task/scorecard.md`, `.task/implementation-plan.md`, `.task/quality-gates.md`, `.task/review.md`, `.task/pr-body.md`).
 
 ## Test Evidence
-- `npm run lint`: **Passed** (0 type errors).
-- `npm run build`: **Passed** (Clean compilation to `dist/`).
-- `npm test -- --run`: **Passed** (54/54 tests passing in 1.11s).
-
 ```text
+> tsc --noEmit
+> tsc
+> vitest run --coverage
+
  ✓ tests/unit/config.test.ts (4 tests)
  ✓ tests/unit/metadata.test.ts (3 tests)
  ✓ tests/unit/base-resolver.test.ts (4 tests)
  ✓ tests/unit/recover.test.ts (2 tests)
- ✓ tests/unit/publish.test.ts (2 tests)
+ ✓ tests/unit/publish.test.ts (4 tests)
  ✓ tests/unit/task.test.ts (3 tests)
  ✓ tests/unit/doctor.test.ts (3 tests)
  ✓ tests/unit/setup.test.ts (3 tests)
@@ -54,16 +48,11 @@ Successfully implemented Phase 5 Artifacts, Publishing, & Ecosystem Integration 
  ✓ tests/unit/parallel.test.ts (4 tests)
  ✓ tests/integration/phase3.test.ts (1 test)
  ✓ tests/integration/phase5.test.ts (1 test)
+ ✓ tests/integration/publish-push.test.ts (1 test)
  ✓ tests/integration/bin.test.ts (3 tests)
  ✓ tests/integration/phase2.test.ts (3 tests)
 
- Test Files  20 passed (20)
-      Tests  54 passed (54)
+ Test Files  21 passed (21)
+      Tests  57 passed (57)
+   Duration  1.15s
 ```
-
-## Complete Project Roadmap Status
-- **Phase 1: Foundation & Core Lifecycle (`spawn`, `list`, `info`, `drop`)**: Delivered & Verified
-- **Phase 2: Operational Safety & Diagnostics (`status`, `sync`, `doctor`, `clean`, `recover`)**: Delivered & Verified
-- **Phase 3: Project-Aware Setup & Profiles (`setup`, `env`, `exec`)**: Delivered & Verified
-- **Phase 4: Parallel Variant Workflows (`parallel spawn`, `parallel compare`, `parallel pick`)**: Delivered & Verified
-- **Phase 5: Artifacts, Publishing, & Ecosystem Integration (`pr`, `issue`, `task`, `handoff`)**: Delivered & Verified

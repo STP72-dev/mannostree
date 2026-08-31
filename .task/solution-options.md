@@ -1,53 +1,44 @@
-# Solution Options: Phase 5 Artifacts, Publishing, & Ecosystem Integration
+# Solution Options: GitHub CLI Adapter & Safe Binary Execution
 
-## Option 1: Integrated Publishing & Task Engine with Local Artifact Assembler (Recommended)
+## Option 1: Injected `GhAdapter` / `GhExecutor` with Native `execFile` Default (Recommended)
 
 ### Architecture & Module Boundaries
-- `src/core/publish.ts`: `PublishEngine` handling PR assembly, GitHub CLI (`gh`) interop, prepare-only mode, and remote pushing.
-- `src/core/task.ts`: `TaskEngine` handling artifact completeness validation, issue linking, and handoff generation.
-- `src/core/orchestrator.ts`: Integrate `pr`, `issue`, `task`, and `handoff` methods into `MannostreeOrchestrator`.
-- `src/cli/commands/`: Add `pr.ts`, `issue.ts`, `task.ts`, `handoff.ts`.
+- Introduce `GhExecutor` interface in `src/core/publish.ts`:
+  ```ts
+  export type GhExecutor = (args: string[], cwd: string) => Promise<{ stdout: string; stderr: string }>;
+  ```
+- `PublishEngine` takes optional `ghExecutor` in constructor. Default uses `execFileAsync('gh', args, { cwd })`.
+- `GitEngine` handles pure `git` commands; `PublishEngine` orchestrates git push + `gh` CLI invocation.
 
 ### State Transitions & Metadata Impact
-- Updates `publish` block: `pushed`, `pr_number`, `pr_url`, `published_at`.
-- Updates `task` block: `issue_number`, `issue_title`, `source_type`.
-- Transitions `lifecycle_state` to `PR_OPEN` (when PR is created) or `REVIEWED` / `TASK_RESOLVED`.
+- Accurately captures `pr_url` and `pr_number` into `record.publish` and updates `lifecycle_state: 'PR_OPEN'`.
 
 ### Dry-Run & Safety Invariants
-- `prepare-only` default prevents accidental remote git push operations.
-- Full dry-run preview across all mutating commands.
-
-### Scope & Reversibility
-- Completely modular, clean abstractions, 100% backward compatible.
+- When `dryRun: true` or `push: false`, neither git push nor `gh pr create` is invoked.
+- Full testability: Unit and integration tests can inject mock `GhExecutor` to verify argument serialization without network side-effects.
 
 ---
 
-## Option 2: Standalone Shell Script Wrappers around `gh`
+## Option 2: Global Process Monkey-Patching in Tests
 
 ### Architecture & Module Boundaries
-- Delegates all PR generation and issue linking directly to external shell scripts without local artifact aggregation.
+- Hardcode `child_process.execFile` in `PublishEngine` and use Vitest `vi.spyOn` in test suites.
 
 ### State Transitions & Metadata Impact
-- Fails to reliably update local `.mannostree/worktrees/<id>.json` metadata.
+- Brittle in concurrent test runs; couples tests to internal Node.js module loading mechanisms.
 
 ### Dry-Run & Safety Invariants
-- Cannot reliably simulate PR body generation in offline or CI environments.
-
-### Scope & Reversibility
-- Fragile and violates metadata expectations in AGENTS.md.
+- High risk of leaking real process invocations across test boundaries.
 
 ---
 
-## Option 3: Remote Cloud Webhook Service
+## Option 3: Shell String Interpolation via `child_process.exec`
 
 ### Architecture & Module Boundaries
-- Offloads publishing to an external web service or GitHub App.
+- Formats shell string `gh pr create --head "${branch}" ...` and executes via shell interpreter.
 
 ### State Transitions & Metadata Impact
-- Requires network infrastructure, external tokens, and server maintenance.
+- Vulnerable to shell injection if branch or title contains unescaped special characters.
 
 ### Dry-Run & Safety Invariants
-- Unnecessary complexity for a developer CLI tool.
-
-### Scope & Reversibility
-- Disqualified by complexity and infrastructure requirements.
+- Disqualified by security risks.

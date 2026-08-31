@@ -14,7 +14,7 @@ import {
   ParallelPickOptions,
   ParallelPickResult,
 } from './parallel.js';
-import { PublishEngine, PrOptions, PrResult } from './publish.js';
+import { PublishEngine, PrOptions, PrResult, GhExecutor } from './publish.js';
 import { TaskEngine, TaskValidationResult, HandoffReport } from './task.js';
 import {
   CommandOutput,
@@ -109,7 +109,8 @@ export class MannostreeOrchestrator {
 
   constructor(
     public repoRoot: string,
-    public config: MannostreeConfig
+    public config: MannostreeConfig,
+    ghExecutor?: GhExecutor
   ) {
     this.git = new GitEngine(repoRoot);
     this.store = new MetadataStore(repoRoot, config);
@@ -123,7 +124,7 @@ export class MannostreeOrchestrator {
       this.spawn.bind(this),
       this.drop.bind(this)
     );
-    this.publishEngine = new PublishEngine(repoRoot, config, this.git);
+    this.publishEngine = new PublishEngine(repoRoot, config, this.git, ghExecutor);
     this.taskEngine = new TaskEngine(repoRoot, config, this.git);
   }
 

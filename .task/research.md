@@ -1,32 +1,36 @@
-# Research & Technical Decisions: Phase 5 Artifacts, Publishing, & Ecosystem Integration
+# Research & Technical Decisions: Post-MVP Release-Readiness & GitHub CLI Verification
 
-## Context & Objectives
-Phase 5 delivers the publishing, task artifact validation, issue linking, and agent handoff subsystem for Mannostree. It bridges local worktree lifecycle state with external collaboration systems (GitHub, CI/CD, autonomous agent swarms) while enforcing prepare-only safety defaults.
+## Research Sources & Decisions
 
-## Research Findings & Decision Impact
+### 1. GitHub CLI (`gh pr create`) Protocol
+- **Source**: Official GitHub CLI Documentation (`gh pr create --help`).
+- **Date**: 2026-08-31.
+- **Specification Details**:
+  - `gh pr create` requires `--head <branch>` and `--base <base_branch>`.
+  - Content options: `--title <string>` and `--body-file <filepath>`.
+  - Flags: `--draft` creates a draft PR.
+  - Standard output on success: A single URL line formatted as `https://github.com/<owner>/<repo>/pull/<number>`.
+- **Decision Impact**: Implement deterministic regex parsing `/\/pull\/(\d+)/` to extract both `pr_url` and `pr_number`.
 
-### 1. Artifact-First PR Compilation
-- **Source**: ADR-005 & `CLAUDE.md`.
+### 2. Isolated & Injected Binary Execution Architecture
+- **Source**: Node.js `child_process.execFile` and Hexagonal Architecture principles.
+- **Date**: 2026-08-31.
 - **Findings**:
-  - The PR body should be deterministically composed from durable `.task/` markdown files:
-    - Summary & problem from `task-contract.md`
-    - Changes and files from `RESULTS.md`
-    - Verification & test breakdown from `quality-gates.md`
-    - Quality assurance and approval notes from `review.md`
-  - Output is saved to `.task/pr-body.md` in the worktree directory.
-- **Decision Impact**: Implement `PublishEngine` in `src/core/publish.ts` with `assemblePrBody(worktreeFullPath, record)`.
+  - `GitEngine.exec` unconditionally prefixes calls with the `git` binary executable.
+  - `gh` is an external binary executable separate from `git`.
+  - Hardcoding shell `exec` makes testing non-deterministic in environments without `gh` authentication.
+- **Decision Impact**: Introduce `GhAdapter` interface / function signature in `src/core/publish.ts`:
+  ```ts
+  export type GhExecutor = (
+    args: string[],
+    cwd: string
+  ) => Promise<{ stdout: string; stderr: string }>;
+  ```
+  Default implementation executes `child_process.execFile('gh', args, { cwd })`. `PublishEngine` accepts optional `ghExecutor` for seamless dependency injection in tests.
 
-### 2. Prepare-Only Default & Safe Publishing
-- **Source**: `AGENTS.md` Hard Project Rules.
+### 3. Coverage Tooling & Measurement
+- **Source**: Vitest V8 Coverage Guide (`@vitest/coverage-v8`).
+- **Date**: 2026-08-31.
 - **Findings**:
-  - Never push to remote or open PRs silently.
-  - Default behavior: assemble PR body and save locally in `prepare-only` mode.
-  - `--push`: Explicit opt-in flag to push branch and invoke `gh pr create` if GitHub CLI is installed.
-- **Decision Impact**: Implement `createPullRequest()` with explicit prepare-only gating.
-
-### 3. Task Artifact Validation & Handoff Summaries
-- **Source**: `docs/02-project-kickoff/cli-spec.md`.
-- **Findings**:
-  - `task <id> --validate`: Audits required files (`task-contract.md`, `implementation-plan.md`, `quality-gates.md`, `review.md`, `RESULTS.md`) and reports completeness score.
-  - `handoff <id>`: Structures a serialized snapshot of the workspace (git diffs, ahead/behind, task state, next recommended action) for successor agents or human reviewers.
-- **Decision Impact**: Implement `TaskEngine` in `src/core/task.ts` handling validation and handoff assembly.
+  - `@vitest/coverage-v8` provides fast AST-accurate branch and statement coverage without transpilation instrumentation overhead.
+- **Decision Impact**: Integrated `@vitest/coverage-v8@^3.0.7` and configured reporting in `vitest.config.ts`.

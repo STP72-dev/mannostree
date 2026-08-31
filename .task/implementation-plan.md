@@ -1,64 +1,37 @@
-# Implementation Plan: Phase 5 Artifacts, Publishing, & Ecosystem Integration
+# Implementation Plan: GitHub CLI Adapter Verification & Coverage Measurement
 
 ## Overview
-Deliver Phase 5 Artifacts, Publishing, & Ecosystem Integration for **Mannostree**:
-- **Publish Engine (`src/core/publish.ts`)**:
-  - `assemblePrBody`: Reads `.task/task-contract.md`, `RESULTS.md`, `.task/quality-gates.md`, and `.task/review.md` to compose a comprehensive PR body markdown document.
-  - `publishPr`: Saves `.task/pr-body.md`. In default `prepare-only` mode, generates and returns PR body without network calls. When `--push` is passed, runs `git push` and optionally calls `gh pr create` if GitHub CLI is installed.
-  - Updates worktree metadata (`publish.pushed`, `publish.pr_number`, `publish.pr_url`, `publish.published_at`, `lifecycle_state: 'PR_OPEN'`).
-- **Task Engine (`src/core/task.ts`)**:
-  - `linkIssue`: Associates GitHub issue number and title to worktree record and updates `.task/task-contract.md`.
-  - `validateArtifacts`: Checks required files (`task-contract.md`, `implementation-plan.md`, `quality-gates.md`, `review.md`, `RESULTS.md`) and calculates completeness score.
-  - `generateHandoff`: Builds comprehensive agent/human handoff summary.
-- **Orchestrator Integration**:
-  - Add `pr()`, `issue()`, `task()`, and `handoff()` methods to `MannostreeOrchestrator`.
-- **CLI Commands**:
-  - `mannostree pr <id> [--draft] [--title <text>] [--body-file <path>] [--push] [--dry-run]`
-  - `mannostree issue <id> [--from-issue <num>] [--title <text>] [--dry-run]`
-  - `mannostree task <id> [--validate] [--summary]`
-  - `mannostree handoff <id> [--to <name>] [--notes <text>]`
-- **Testing & Documentation**:
-  - Unit tests for PR body compilation, issue linking, task artifact validation, and handoff generation.
-  - CLI integration tests for all 4 commands.
+Implement the injected `GhAdapter` in `src/core/publish.ts`, connect it to `MannostreeOrchestrator`, write comprehensive unit and integration tests proving the `--push` publishing flow, and verify code coverage metrics.
+
+## Detailed Tasks
+
+### 1. `GhExecutor` in `src/core/publish.ts`
+- Define `GhExecutor` type.
+- Implement default `defaultGhExecutor` using `execFileAsync('gh', args, { cwd })`.
+- Update `PublishEngine` to invoke `this.ghExecutor(ghArgs, worktreeFullPath)`.
+- Extract PR URL and number via regex.
+
+### 2. Comprehensive Test Suite
+- `tests/unit/publish.test.ts`:
+  - Test `--push` with mock `ghExecutor` returning PR URL.
+  - Test `--push` with `--draft` flag.
+  - Test `--push` when `gh` returns error (fails gracefully, records pushed branch).
+- `tests/integration/publish-push.test.ts`:
+  - End-to-end integration test with local git remote and mock `gh` executable on PATH.
+
+### 3. Verification & Code Coverage
+- Run `npm run lint`.
+- Run `npm run build`.
+- Run `npm run coverage` and document exact coverage statistics in `.task/quality-gates.md`.
 
 ---
 
-## Detailed Specifications
+## Acceptance-to-Test Traceability Matrix
 
-### 1. `pr <id> [--draft] [--title <text>] [--body-file <path>] [--push] [--dry-run]`
-- Finds worktree record.
-- Reads `task-contract.md`, `RESULTS.md`, `quality-gates.md`, `review.md`.
-- Assembles PR markdown body and saves to `.task/pr-body.md`.
-- If `push`: pushes branch to remote and invokes `gh pr create` if available.
-- If `prepare-only` (default): outputs PR body and manual instructions.
-- Updates metadata: `publish.pr_number`, `publish.pr_url`, `publish.published_at`, `lifecycle_state: 'PR_OPEN'`.
-
-### 2. `issue <id> [--from-issue <num>] [--title <text>]`
-- Links issue number and title to worktree record (`task.issue_number`, `task.issue_title`, `task.source_type: 'issue'`).
-- Updates `.task/task-contract.md` header with issue reference.
-
-### 3. `task <id> [--validate] [--summary]`
-- Audits `.task/` artifacts.
-- Checks presence and contents of:
-  - `task-contract.md`
-  - `implementation-plan.md`
-  - `quality-gates.md`
-  - `review.md`
-  - `RESULTS.md`
-- Returns completeness score (0-100%) and missing artifacts list.
-
-### 4. `handoff <id> [--to <name>] [--notes <text>]`
-- Serializes complete snapshot: worktree record, branch, base branch, head commit, diff stats, validation status, reviewer notes, and next recommended actions.
-
----
-
-## Acceptance Traceability Matrix
-
-| Requirement | Implementation Component | Test Suite |
-|-------------|--------------------------|------------|
-| Artifact PR compilation & prepare-only mode | `PublishEngine.publishPr`, `orchestrator.pr` | `tests/unit/publish.test.ts` |
-| Issue linking & task contract update | `TaskEngine.linkIssue`, `orchestrator.issue` | `tests/unit/task.test.ts` |
-| Task artifact validation | `TaskEngine.validateArtifacts`, `orchestrator.task` | `tests/unit/task.test.ts` |
-| Agent/human handoff summary | `TaskEngine.generateHandoff`, `orchestrator.handoff` | `tests/unit/task.test.ts` |
-| CLI commands & dry-run | `src/cli/commands/pr.ts`, `issue.ts`, `task.ts`, `handoff.ts` | `tests/integration/phase5.test.ts` |
-| Full backward compatibility | All prior modules | All test suites |
+| Acceptance Item | Implementation | Test Suite |
+|-----------------|----------------|------------|
+| `gh pr create` argument formatting | `PublishEngine.publishPr` | `tests/unit/publish.test.ts` |
+| PR number & URL parsing | `PublishEngine.publishPr` | `tests/unit/publish.test.ts` |
+| Fallback on `gh` error | `PublishEngine.publishPr` | `tests/unit/publish.test.ts` |
+| End-to-end `--push` workflow | `PublishEngine` + `GitEngine` | `tests/integration/publish-push.test.ts` |
+| Code Coverage Reporting | `@vitest/coverage-v8` | `npm run coverage` |

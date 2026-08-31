@@ -1,39 +1,36 @@
-# Task Contract: Phase 5 Artifacts, Publishing, & Ecosystem Integration
+# Task Contract: Post-MVP Release-Readiness & GitHub CLI Verification
 
 ## Problem
-After implementing and validating changes in an isolated worktree, developers and autonomous AI agents need dependable tools to summarize task results, assemble clean pull request documentation from durable `.task/` artifacts, link GitHub issues, and generate handoff packages for successor agents or human reviewers.
+While all five feature phases of Mannostree have been implemented and validated in prepare-only mode (54 unit and integration tests passing across 20 suites), two critical release-readiness gaps remain:
+1. **Unmeasured Code Coverage**: Vitest coverage configuration was missing, leaving release quality thresholds unmeasured and unverified.
+2. **Unverified GitHub CLI Publishing Path**: In `src/core/publish.ts`, GitHub PR creation invoked `this.git.exec(['gh', ...])` (which mistakenly ran `git gh`), and no adapter-level or mocked executable test existed to verify that `--push` invokes `gh pr create` with correct arguments, parses PR URLs/numbers, and handles `gh` absence/errors gracefully.
 
 ## Scope
-Deliver Phase 5 Artifacts, Publishing, & Ecosystem Integration while preserving 100% backward compatibility across Phases 1, 2, 3, and 4:
-1. **`pr <id> [--draft] [--title <text>] [--body-file <path>] [--push] [--dry-run]`**:
-   - Generates PR body by aggregating `.task/task-contract.md`, `RESULTS.md`, `.task/quality-gates.md`, and `.task/review.md`.
-   - Default mode is `prepare-only`: generates PR body locally (saved to `.task/pr-body.md` and returned in output envelope).
-   - If `--push` is passed, executes git push and optionally invokes `gh pr create` when available.
-   - Updates metadata (`publish.pr_number`, `publish.pr_url`, `publish.published_at`, `lifecycle_state: 'PR_OPEN'`).
-   - Supports `--dry-run` preview.
-2. **`issue <id> [--from-issue <num>] [--title <text>] [--dry-run]`**:
-   - Links worktree to an issue; updates `.task/task-contract.md` and metadata (`task.issue_number`, `task.issue_title`, `task.source_type`).
-3. **`task <id> [--validate] [--summary]`**:
-   - Inspects durable `.task/` artifacts, validates completeness of required files, and computes task status summary.
-4. **`handoff <id> [--to <name>] [--notes <text>]`**:
-   - Prepares an agent/human handoff summary containing current worktree record, git status, ahead/behind counts, diff summary, and pending review recommendations.
-5. **Testing & Documentation**:
-   - Unit tests for PR body generation, issue linking, task artifact validation, and handoff package generation.
-   - Integration tests for all Phase 5 CLI commands.
-   - Update README and durable task artifacts.
+1. **Vitest V8 Code Coverage System**:
+   - Configure `@vitest/coverage-v8` in `vitest.config.ts`.
+   - Add `npm run test:coverage` and `npm run coverage` scripts in `package.json`.
+   - Establish coverage thresholds and produce complete text, JSON, and HTML reports.
+2. **GitHub CLI Adapter & Safe Binary Execution**:
+   - Implement clean `GhAdapter` / `execBinary` mechanism in `src/core/publish.ts` to execute `gh pr create` as a dedicated binary rather than through `git`.
+   - Support adapter injection for deterministic unit testing and mocked executable integration tests.
+   - Verify `--push` flow end-to-end: remote git push, `gh pr create` invocation with `--head`, `--base`, `--title`, `--body-file`, `--draft`, URL/number extraction, and graceful degradation when `gh` is unavailable.
+3. **Comprehensive Verification**:
+   - Unit tests covering both successful `gh` execution and error fallback modes.
+   - Mocked executable integration test verifying `--push` end-to-end.
+   - Measure and record 100% accurate coverage metrics.
 
 ## Out-of-Scope
-- Auto-merging pull requests.
-- Unsolicited background remote git pushes.
+- Automatically pushing to real remote repositories without user authorization.
+- Merging pull requests or modifying remote repository branch protection.
 
 ## Acceptance Criteria
-- [ ] **Compatibility**: All 48 existing unit and integration tests continue to pass.
-- [ ] **`pr`**: Generates structured PR body from artifacts; operates in `prepare-only` by default; updates publish metadata; supports `--push` and `--dry-run`.
-- [ ] **`issue`**: Links issue metadata and updates task contract file.
-- [ ] **`task`**: Validates artifact files and quality gates.
-- [ ] **`handoff`**: Outputs complete handoff bundle for successor agents.
-- [ ] **Test Coverage**: 100% passing tests across all test suites.
+- [ ] `npm run lint`: 0 TypeScript type errors.
+- [ ] `npm run build`: Clean build into `dist/`.
+- [ ] `npm run coverage`: Generates real coverage metrics across all core subsystems.
+- [ ] GitHub CLI `--push` flow verified with real adapter-level and mocked executable tests.
+- [ ] All safety invariants preserved (prepare-only default, no auto-merge, no auto-delete).
 
-## Explicit Assumptions
+## Explicit Assumptions & Safety Invariants
 - Base branch: `main`.
-- Publishing mode: `prepare-only` by default.
+- Default publishing mode: `prepare-only`.
+- External publishing requires explicit `--push` flag.
