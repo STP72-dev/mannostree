@@ -23,9 +23,9 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/STP72-dev/mannostree.git"
+    "url": "https://github.com/ludmansolutions/mannostree.git"
   },
-  "author": "STP72-dev",
+  "author": "Ludman Solutions",
   "license": "MIT",
   "dependencies": {
     "chalk": "^5.4.1",
