@@ -1,4 +1,4 @@
-# Independent Review: Phase 1 Core Foundation
+# Independent Review: Phase 2 Operational Safety & Diagnostics
 
 ## Verdict
 **PASSED**
@@ -13,12 +13,13 @@ None.
 None.
 
 ## Suggestions
-- For Phase 2 (Operational Safety), integrate `doctor` command to scan and repair any untracked or orphaned worktrees on disk against `.mannostree/registry.json`.
-- For Phase 3 (Project-Aware Setup), expand profile setup execution to run custom profile scripts in isolated subshells.
+- In Phase 3, connect profile-level environment file policies (`.env` copy/link/generate) to worktree spawn and execution workflows.
+- In Phase 4, link `parallel pick` winner selection directly to `clean --merged` and `clean` protection gates.
 
 ## Invariant & Security Verification Evidence
-- [x] **Base Branch Explicitness**: `resolveBaseBranch` strictly resolves through CLI flag, profile, config default, and remote default. If `forbid_current_branch_as_base` is true, fallback to current branch is strictly forbidden.
-- [x] **Lifecycle Ownership**: Worker code does not create/destroy branches directly. The `MannostreeOrchestrator` controls all branch and worktree allocations.
-- [x] **No Implicit Deletions / Merges**: `drop` requires `--force` when dirty changes or untracked files are present. No auto-merge logic exists.
-- [x] **Atomic Persistence**: `writeAtomicJson` guarantees all JSON writes to registry and worktree records happen via temporary files followed by atomic filesystem renames.
-- [x] **Schema Integrity**: All config and metadata objects are validated via Zod schemas before being accepted or written.
+- [x] **Read-Only Diagnostics**: `status` and `doctor` do not mutate disk or git state without explicit `--fetch` or `--fix --yes`.
+- [x] **Sync Atomicity & Cleanliness**: `sync` refuses dirty worktrees and automatically rolls back (`git rebase --abort` / `git merge --abort`) when conflicts occur, preventing corrupted git states.
+- [x] **Safe Bulk Clean**: `clean` defaults to dry-run reporting; non-dry execution strictly requires an explicit filter and `--yes`; never mutates the main repo or untracked directories.
+- [x] **Safe Targeted Recovery**: `recover` requires exactly one explicit repair mode and previews proposed actions before applying.
+- [x] **Untracked Directory Preservation**: Untracked directories under `.worktrees/` are surfaced strictly as informational findings and are NEVER touched or deleted by `doctor` or `clean`.
+- [x] **Full Phase 1 Backward Compatibility**: 100% of Phase 1 unit and integration tests continue to pass without regression.

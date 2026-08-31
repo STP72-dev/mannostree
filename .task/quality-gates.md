@@ -1,22 +1,27 @@
-# Quality Gates: Phase 1 Core Foundation
+# Quality Gates: Phase 2 Operational Safety & Diagnostics
 
 ## Commands
 1. `npm run lint` (`tsc --noEmit`)
 2. `npm run build` (`tsc`)
-3. `npm test` (`vitest run`)
+3. `npm test -- --run` (`vitest run --run`)
 
 ## Outcomes
 - `npm run lint`: **PASSED** (Exit code: 0, Zero type errors).
-- `npm run build`: **PASSED** (Exit code: 0, Successfully compiled to `dist/`).
-- `npm test`: **PASSED** (Exit code: 0, 19/19 tests passing across 6 suites in 698ms).
+- `npm run build`: **PASSED** (Exit code: 0, Clean compilation to `dist/`).
+- `npm test -- --run`: **PASSED** (Exit code: 0, 32/32 tests passing across 11 suites in 905ms).
 
 ### Per-Suite Test Breakdown
-- `tests/unit/artifact.test.ts`: 2 passed (scaffold files & dry-run simulation)
-- `tests/unit/metadata.test.ts`: 3 passed (atomic write temp+rename, registry initialization, worktree records & archive)
-- `tests/unit/config.test.ts`: 4 passed (default config, custom YAML load, schema validation errors, missing explicit path)
-- `tests/unit/base-resolver.test.ts`: 4 passed (explicit CLI base, invalid CLI base rejection, config default, strict refusal of current branch fallback)
-- `tests/integration/cli.test.ts`: 3 passed (dry-run spawn, end-to-end spawn/list/info/drop, dirty worktree refusal & force drop)
-- `tests/integration/bin.test.ts`: 3 passed (binary CLI help text, dry-run JSON envelope, end-to-end executable lifecycle)
+- `tests/unit/artifact.test.ts`: 2 passed
+- `tests/unit/config.test.ts`: 4 passed
+- `tests/unit/metadata.test.ts`: 3 passed
+- `tests/unit/base-resolver.test.ts`: 4 passed
+- `tests/unit/sync.test.ts`: 3 passed (clean sync, dirty rejection, conflict automatic abort)
+- `tests/unit/doctor.test.ts`: 3 passed (healthy check, missing disk repair, untracked folder preservation)
+- `tests/unit/clean.test.ts`: 2 passed (candidate report dry-run, merged filter execution)
+- `tests/unit/recover.test.ts`: 2 passed (rebuild metadata, single-mode validation)
+- `tests/integration/cli.test.ts`: 3 passed (Phase 1 end-to-end regression)
+- `tests/integration/bin.test.ts`: 3 passed (Phase 1 CLI binary regression)
+- `tests/integration/phase2.test.ts`: 3 passed (Phase 2 status, doctor, sync/clean/recover CLI binary flows)
 
 ## Environment Constraints
 - Node: v24.19.0

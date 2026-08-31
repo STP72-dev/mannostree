@@ -5,6 +5,11 @@ import { registerSpawnCommand } from './commands/spawn.js';
 import { registerListCommand } from './commands/list.js';
 import { registerInfoCommand } from './commands/info.js';
 import { registerDropCommand } from './commands/drop.js';
+import { registerStatusCommand } from './commands/status.js';
+import { registerSyncCommand } from './commands/sync.js';
+import { registerDoctorCommand } from './commands/doctor.js';
+import { registerCleanCommand } from './commands/clean.js';
+import { registerRecoverCommand } from './commands/recover.js';
 import { ExitCode, GlobalOptions, MannostreeError } from '../types/index.js';
 
 export function createProgram(): Command {
@@ -25,10 +30,18 @@ export function createProgram(): Command {
     .option('--cwd <path>', 'Run as if invoked from specified directory')
     .option('--no-color', 'Disable ANSI colors');
 
+  // Phase 1 commands
   registerSpawnCommand(program);
   registerListCommand(program);
   registerInfoCommand(program);
   registerDropCommand(program);
+
+  // Phase 2 commands
+  registerStatusCommand(program);
+  registerSyncCommand(program);
+  registerDoctorCommand(program);
+  registerCleanCommand(program);
+  registerRecoverCommand(program);
 
   return program;
 }

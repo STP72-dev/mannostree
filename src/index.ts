@@ -6,6 +6,7 @@ export * from './metadata/store.js';
 export * from './git/engine.js';
 export * from './git/base-resolver.js';
 export * from './artifact/scaffold.js';
+export * from './core/doctor.js';
 export * from './core/orchestrator.js';
 export * from './cli/output.js';
 export * from './cli/index.js';

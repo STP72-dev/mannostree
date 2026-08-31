@@ -1,112 +1,96 @@
-# Implementation Plan: Phase 1 Core Foundation
+# Implementation Plan: Phase 2 Operational Safety & Diagnostics
 
 ## Overview
-Implement the complete Phase 1 core foundation for Mannostree in TypeScript/Node (ESM):
-- Project scaffolding (`package.json`, `tsconfig.json`, `vitest.config.ts`, build scripts).
-- Configuration engine (`.mannostree.yml` parser with Zod schema validation and profile support).
-- Metadata engine (atomic write-temp-rename file persistence for `registry.json` and `worktrees/<id>.json`).
-- Git & Worktree engine (deterministic base-branch resolution, worktree add/remove, dirty state checks, dry-run execution).
-- Artifact engine (scaffolding `.task/` skeleton + `RESULTS.md`).
-- Application / Orchestrator layer (coordinating operations, enforcing lifecycle rules, dry-run routing).
-- CLI layer (Commander.js entrypoint, global flags `--json`/`--yaml`/`--plain`/`--dry-run`, exit code taxonomy, formatting).
-- CLI commands: `spawn`, `list`, `info`, `drop`.
-- Automated test suite (unit + integration) and documentation alignment.
+Implement Phase 2 commands and system components for **Mannostree**:
+- `status <id> [--fetch]`: Live git ahead/behind, dirty/untracked/conflict, and lifecycle state.
+- `sync <id> [--strategy rebase|merge|ff-only] [--fetch] [--dry-run]`: Safe branch synchronization with automatic rollback on conflict.
+- `doctor [--json] [--fix] [--yes]`: Comprehensive health diagnostics for registry vs disk, git refs, orphan branches, untracked worktrees, and repair plans.
+- `clean [--merged] [--stale-days N] [--state S] [--dry-run] [--yes] [--force]`: Safe candidate-reported bulk cleanup of eligible worktrees.
+- `recover <id> [--rebuild-metadata] [--reattach-worktree] [--reattach-branch] [--dry-run] [--yes]`: Targeted repair proposal for broken workspaces.
 
 ---
 
-## Architecture & Module Breakdown
+## Detailed Command Specifications
 
-### 1. Project Configuration & Scaffolding
-- `package.json`: Type `"module"`, dependencies (`commander`, `yaml`, `zod`, `chalk`), devDependencies (`typescript`, `@types/node`, `vitest`, `tsx`).
-- `tsconfig.json`: Target ES2022, Module NodeNext, strict mode enabled.
-- `vitest.config.ts`: Vitest test configuration.
-- `bin/mannostree.js`: Executable wrapper pointing to compiled `dist/cli/index.js` or `tsx src/cli/index.ts`.
+### 1. `status <id> [--fetch]`
+- Read-only by default (no disk/git mutations).
+- If `--fetch` is provided, fetches the latest refs for the base branch from `origin`.
+- Computes:
+  - `ahead_count` and `behind_count` relative to `base_branch`.
+  - `dirty`, `has_untracked_files`, `has_conflicts`.
+  - Head commit hash and commit subject.
+  - Lifecycle state and status.
+  - Validation status and Review status (from metadata/artifacts).
 
-### 2. Domain Types & Constants (`src/types/`)
-- `src/types/index.ts`:
-  - `WorktreeRecord`, `RegistryRecord`, `LifecycleState`, `WorktreeStatus`.
-  - Global CLI options (`json`, `yaml`, `plain`, `dryRun`, `verbose`, `quiet`, `config`, `profile`, `cwd`).
-  - Command output envelope (`CommandOutput<T>`).
-  - Exit code enum (`ExitCode`).
+### 2. `sync <id> [--strategy rebase|merge|ff-only] [--fetch] [--dry-run]`
+- Safety Gate: If worktree is dirty or has untracked changes, refuse immediately with `ExitCode.USAGE_ERROR` (2) unless clean.
+- If `--fetch` is enabled (or configured default), fetches base ref.
+- In `--dry-run`: Previews the exact command that would execute (`git rebase <base>`, `git merge <base>`, or `git merge --ff-only <base>`).
+- In real execution:
+  - Runs rebase / merge in the worktree directory.
+  - On conflict or error: immediately invokes `git rebase --abort` or `git merge --abort`, captures conflicting files, and throws `MannostreeError` (`ExitCode.GIT_ERROR` / 4) with conflict details, leaving the worktree in its original clean state.
+  - On success: refreshes `git_state` and `last_activity_at`.
 
-### 3. Configuration Engine (`src/config/`)
-- `src/config/schema.ts`: Zod schema for `.mannostree.yml`.
-  - Validates `version`, `default_base_branch`, `worktree_root`, `metadata_root`, `artifact_dir_name`, `base_branch_resolution`, `profiles`, `cleanup`.
-- `src/config/loader.ts`: Loads config from `--config` path or traverses upward for `.mannostree.yml`. Falls back to safe default config if missing.
+### 3. `doctor [--json] [--fix] [--yes]`
+- Diagnoses:
+  - `MISSING_DISK`: Tracked in registry, but directory missing on disk.
+  - `MISSING_BRANCH`: Tracked in registry, but branch missing in git.
+  - `SCHEMA_ERROR`: Worktree or registry JSON fails schema validation or version mismatch.
+  - `UNTRACKED_DIR`: Directory exists under `worktree_root`, but not tracked in registry (Informational only; NEVER touched).
+  - `ORPHAN_BRANCH`: Branch with worktree prefix exists in git, but has no active worktree record.
+- `--fix` without `--yes`: Returns proposed concrete repair actions and exits without mutating.
+- `--fix --yes`: Applies safe, non-destructive repair actions (e.g. re-registering metadata, pruning dead registry entries).
 
-### 4. Metadata Engine (`src/metadata/`)
-- `src/metadata/schema.ts`: Zod schemas for `registry.json` and `worktrees/<id>.json`.
-- `src/metadata/store.ts`:
-  - Atomic persistence (`writeAtomicJson` via temp file + `fs.rename`).
-  - Registry management (init, add worktree, remove worktree, list worktrees).
-  - Worktree record management (get, put, delete, archive).
+### 4. `clean [--merged] [--stale-days N] [--state S] [--dry-run] [--yes] [--force]`
+- Candidate report by default (`--dry-run` default true).
+- If `--yes` is supplied, requires at least one explicit filter (`--merged`, `--stale-days`, `--state`) to execute destruction.
+- Evaluation rules:
+  - `--merged`: Checks if worktree branch is ancestor of base branch (`git merge-base --is-ancestor`).
+  - `--stale-days <N>`: Checks if `last_activity_at` or `updated_at` is older than N days.
+  - `--state <S>`: Matches lifecycle_state or status.
+- Safety:
+  - NEVER removes main repo root.
+  - Refuses dirty worktrees unless `--force`.
+  - Protects winner variants (if `parallel.winner` is true and `cleanup.protect_winner` is true).
+  - NEVER touches untracked directories.
 
-### 5. Git & Worktree Engine (`src/git/`)
-- `src/git/base-resolver.ts`: Resolves base branch using strict order: CLI flag (`-b`) -> profile -> config default -> remote default. Forbids current branch fallback.
-- `src/git/engine.ts`:
-  - Executing git commands safely via `child_process.execFile`.
-  - Methods: `getRepoRoot`, `checkBranchExists`, `getCurrentBranch`, `getRemoteDefaultBranch`, `createBranchAndWorktree`, `removeWorktreeAndBranch`, `getGitState` (dirty, untracked, ahead/behind).
-  - Supports dry-run simulation.
-
-### 6. Artifact Engine (`src/artifact/`)
-- `src/artifact/scaffold.ts`:
-  - Scaffolds `.task/task-contract.md`, `.task/solution-options.md`, `.task/implementation-plan.md`, `.task/quality-gates.md`, `.task/review.md`, and `RESULTS.md` inside newly spawned worktrees.
-
-### 7. Orchestration Layer (`src/core/`)
-- `src/core/orchestrator.ts`:
-  - Implements `spawnWorktree(options)`, `listWorktrees(filter)`, `getInfo(id)`, `dropWorktree(id, options)`.
-  - Enforces lifecycle state transitions (`WORKTREE_READY`, `CONTEXT_PACKED`).
-  - Formats results into standard envelope (`CommandOutput<T>`).
-
-### 8. CLI Commands & Entrypoint (`src/cli/`)
-- `src/cli/output.ts`: Formatter for text, JSON, YAML, plain, and error rendering.
-- `src/cli/commands/spawn.ts`: `mannostree spawn <name>`
-- `src/cli/commands/list.ts`: `mannostree list`
-- `src/cli/commands/info.ts`: `mannostree info <id>`
-- `src/cli/commands/drop.ts`: `mannostree drop <id>`
-- `src/cli/index.ts`: Commander program setup with global flags, error handlers, and exit code mappings.
+### 5. `recover <id> [--rebuild-metadata] [--reattach-worktree] [--reattach-branch] [--dry-run] [--yes]`
+- Evaluates damage to worktree `<id>`.
+- Requires exactly one explicit repair mode (`--rebuild-metadata`, `--reattach-worktree`, `--reattach-branch`).
+- Previews the action in `--dry-run`.
+- Executes repair when `--yes` is passed; if repair cannot be proven or fails, sets `lifecycle_state: 'BROKEN'`.
 
 ---
 
-## Risk Register
-
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| Incomplete git worktree creation due to existing branch/directory collision | Worktree or branch creation fails midway | Pre-flight collision checks before executing git commands; atomic cleanup on error. |
-| Race conditions or partial writes in metadata | Broken metadata records | Use write-temp-then-rename for all JSON writes. |
-| Accidental removal of dirty or uncommitted work during `drop` | Data loss | Inspect worktree git status before dropping; reject unless `--force` is provided. |
-| Implicit base-branch fallback | Violates project safety invariants | Strict base-branch resolution order; throw validation error if base cannot be deterministically resolved. |
-
----
-
-## Test & Verification Plan
-
-### 1. Unit Tests
-- `tests/unit/config.test.ts`: Test YAML parsing, default fallbacks, schema validations, and invalid config error handling.
-- `tests/unit/metadata.test.ts`: Test atomic JSON writes, schema validation, registry additions, removals, and queries.
-- `tests/unit/base-resolver.test.ts`: Test deterministic resolution hierarchy and rejection of current-branch fallbacks.
-- `tests/unit/artifact.test.ts`: Test scaffolding of `.task/` files and `RESULTS.md`.
-
-### 2. Integration Tests
-- `tests/integration/cli.test.ts`: End-to-end testing using temporary git repositories:
-  - CLI help and global flags (`--json`, `--dry-run`).
-  - `spawn` creates branch, worktree directory, metadata record, and `.task/` artifacts.
-  - `spawn --dry-run` reports actions without modifying disk.
-  - `list` returns formatted table and `--json` list.
-  - `info <id>` returns full metadata and health checks.
-  - `drop <id>` safely removes worktree and branch, updating metadata.
-  - `drop` refuses dirty worktree without `--force`.
+## Dependency-Ordered Implementation Tasks
+1. **Task 1: Extend `GitEngine`**: Add `getAheadBehindCount`, `isBranchMerged`, `syncWorktree`, `listPorcelainWorktrees`, `repairWorktree`, `fetchAll`.
+2. **Task 2: Implement Diagnostic Analyzer (`DoctorEngine`)**: Create `src/core/doctor.ts` to inspect inconsistencies and formulate repair plans.
+3. **Task 3: Extend `MannostreeOrchestrator`**: Implement `status()`, `sync()`, `doctor()`, `clean()`, and `recover()`.
+4. **Task 4: CLI Command Registration & Output Formatting**: Add `src/cli/commands/status.ts`, `sync.ts`, `doctor.ts`, `clean.ts`, `recover.ts`, and enrich `src/cli/output.ts`.
+5. **Task 5: Test Suite Expansion**: Unit tests for sync rollback, merge checks, doctor rules, clean filters, and integration tests for all 5 commands.
+6. **Task 6: Documentation Updates**: Update `README.md`, `CLAUDE.md`, and generate Phase 2 delivery artifacts.
 
 ---
 
-## Acceptance Traceability Matrix
+## Risk Register & Pre-Mortem
 
-| Requirement | Implementation Component | Verification Test |
-|-------------|--------------------------|-------------------|
-| CLI scaffold & global flags | `src/cli/index.ts`, `src/cli/output.ts` | `tests/integration/cli.test.ts` |
-| `.mannostree.yml` loading & schema validation | `src/config/schema.ts`, `src/config/loader.ts` | `tests/unit/config.test.ts` |
-| Atomic metadata registry & worktree records | `src/metadata/store.ts`, `src/metadata/schema.ts` | `tests/unit/metadata.test.ts` |
-| Explicit base-branch resolution | `src/git/base-resolver.ts` | `tests/unit/base-resolver.test.ts` |
-| Safe `spawn`, `list`, `info`, `drop` commands | `src/core/orchestrator.ts`, `src/cli/commands/*` | `tests/integration/cli.test.ts` |
-| Dry-run support across commands | `src/git/engine.ts`, `src/core/orchestrator.ts` | `tests/integration/cli.test.ts` |
-| Aligned documentation | `README.md`, `CLAUDE.md` | Verification pass |
+| Risk / Failure Mode | Impact | Prevention & Mitigation |
+|---------------------|--------|--------------------------|
+| Sync conflict leaves dirty merge state in workspace | Workspace broken for user | Automated `git rebase --abort` / `git merge --abort` on error; reports conflict files safely. |
+| Bulk clean deletes uncommitted user changes | Data loss | Hard gate checking `isWorktreeDirty`; skips dirty worktrees unless `--force`. |
+| Doctor mistakenly deletes untracked directory | Destroys foreign folders | Untracked directories are strictly read-only informational findings; doctor never deletes them. |
+| Clean runs accidentally on all workspaces | Unintended deletion | Non-dry clean requires explicit filter (`--merged`, `--stale-days`, or `--state`) AND `--yes`. |
+| Status command makes slow remote network calls | Degrades CLI responsiveness | `--fetch` is opt-in; status is cheap local git query by default. |
+
+---
+
+## Acceptance-to-Test Traceability Matrix
+
+| Acceptance Criteria | Implementation Component | Test Suite |
+|---------------------|--------------------------|------------|
+| Status reports ahead/behind, dirty, conflicts | `GitEngine.getGitState`, `orchestrator.status` | `tests/unit/status.test.ts`, `tests/integration/status.test.ts` |
+| Sync safely syncs and aborts on conflict | `GitEngine.syncWorktree`, `orchestrator.sync` | `tests/unit/sync.test.ts`, `tests/integration/sync.test.ts` |
+| Doctor identifies missing disk, branches, schemas | `DoctorEngine.diagnose`, `orchestrator.doctor` | `tests/unit/doctor.test.ts`, `tests/integration/doctor.test.ts` |
+| Clean candidate report & safe filtered execution | `orchestrator.clean` | `tests/unit/clean.test.ts`, `tests/integration/clean.test.ts` |
+| Recover repairs broken metadata/worktrees | `orchestrator.recover` | `tests/unit/recover.test.ts`, `tests/integration/recover.test.ts` |
+| Full Phase 1 backward compatibility | All Phase 1 modules | `tests/integration/cli.test.ts`, `tests/integration/bin.test.ts` |

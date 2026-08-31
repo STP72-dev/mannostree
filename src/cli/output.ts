@@ -1,6 +1,7 @@
 import YAML from 'yaml';
 import chalk from 'chalk';
 import { CommandOutput, GlobalOptions, WorktreeRecord } from '../types/index.js';
+import { DoctorReport } from '../core/doctor.js';
 
 export function formatOutput<T>(
   output: CommandOutput<T>,
@@ -102,8 +103,10 @@ export function formatWorktreeInfo(record: WorktreeRecord & { live_health?: any 
   if (record.git_state) {
     lines.push(
       chalk.bold('\nGit State:'),
+      `  ${chalk.dim('Ahead / Behind:')}  ${chalk.green(`+${record.git_state.ahead_count || 0}`)} / ${chalk.red(`-${record.git_state.behind_count || 0}`)} (vs ${record.base_branch})`,
       `  ${chalk.dim('Dirty:')}           ${record.git_state.dirty ? chalk.red('yes') : chalk.green('no')}`,
       `  ${chalk.dim('Untracked:')}       ${record.git_state.has_untracked_files ? chalk.yellow('yes') : chalk.green('no')}`,
+      `  ${chalk.dim('Conflicts:')}       ${record.git_state.has_conflicts ? chalk.red('yes') : chalk.green('no')}`,
       `  ${chalk.dim('Head Commit:')}     ${record.git_state.head_commit || 'unknown'}`,
       `  ${chalk.dim('Commit Message:')} ${record.git_state.head_commit_message || ''}`
     );
@@ -119,4 +122,97 @@ export function formatWorktreeInfo(record: WorktreeRecord & { live_health?: any 
   }
 
   return lines.join('\n');
+}
+
+export function formatDoctorReport(report: DoctorReport): string {
+  const lines: string[] = [
+    chalk.bold.cyan('🩺 Mannostree Doctor Diagnostic Report'),
+    `  ${chalk.dim('Timestamp:')}     ${report.timestamp}`,
+    `  ${chalk.dim('System Health:')} ${report.healthy ? chalk.green('HEALTHY') : chalk.red('ISSUES DETECTED')}`,
+    `  ${chalk.dim('Findings:')}      ${report.error_count} error(s), ${report.warning_count} warning(s)`,
+  ];
+
+  if (report.findings.length === 0) {
+    lines.push(chalk.green('\n✔ All registry records, on-disk directories, and git branches are consistent.'));
+  } else {
+    lines.push(chalk.bold('\nDetailed Findings:'));
+    for (const f of report.findings) {
+      const tag =
+        f.severity === 'error'
+          ? chalk.red('[ERROR]')
+          : f.severity === 'warning'
+            ? chalk.yellow('[WARN]')
+            : chalk.blue('[INFO]');
+      lines.push(`  ${tag} ${f.type}: ${f.message}`);
+      if (f.proposed_action) {
+        lines.push(`    ${chalk.dim('Proposed Action:')} ${f.proposed_action}`);
+      }
+    }
+  }
+
+  if (report.proposed_repairs.length > 0) {
+    lines.push(chalk.bold('\nProposed Automated Repairs:'));
+    for (const r of report.proposed_repairs) {
+      lines.push(`  - ${chalk.yellow(r.action)}: ${r.description}`);
+    }
+    lines.push(chalk.dim('\nRun `mannostree doctor --fix --yes` to apply these repairs.'));
+  }
+
+  return lines.join('\n');
+}
+
+export function formatCleanReport(
+  result: { candidates: string[]; cleaned: string[]; reasons: Record<string, string> },
+  dryRun: boolean
+): string {
+  const lines: string[] = [];
+
+  if (result.candidates.length === 0) {
+    lines.push(chalk.dim('No candidate worktrees matched cleanup filters.'));
+    return lines.join('\n');
+  }
+
+  lines.push(
+    dryRun
+      ? chalk.yellow(`⚡ Found ${result.candidates.length} candidate worktree(s) for cleanup (DRY-RUN):`)
+      : chalk.green(`✔ Cleaned ${result.cleaned.length} worktree(s):`)
+  );
+
+  for (const id of result.candidates) {
+    const statusText = dryRun
+      ? chalk.dim(`[candidate: ${result.reasons[id] || 'matches filter'}]`)
+      : result.cleaned.includes(id)
+        ? chalk.green('[removed]')
+        : chalk.red('[skipped]');
+    lines.push(`  - ${chalk.bold(id)} ${statusText}`);
+  }
+
+  if (dryRun) {
+    lines.push(chalk.dim('\nTo perform real cleanup, pass an explicit filter and `--yes`.'));
+  }
+
+  return lines.join('\n');
+}
+
+export function formatSyncResult(
+  result: { id: string; strategy: string; base_branch: string; branch: string },
+  dryRun: boolean
+): string {
+  return [
+    dryRun
+      ? chalk.yellow(`Plan: would sync worktree '${result.id}' with base '${result.base_branch}' using strategy '${result.strategy}'`)
+      : chalk.green(`✔ Successfully synced '${result.id}' (${result.branch}) with base '${result.base_branch}' using ${result.strategy}`),
+  ].join('\n');
+}
+
+export function formatRecoverResult(
+  result: { id: string; action: string; success: boolean; details: string },
+  dryRun: boolean
+): string {
+  return [
+    dryRun
+      ? chalk.yellow(`Plan: would run recovery action '${result.action}' on '${result.id}'`)
+      : chalk.green(`✔ Recovery action '${result.action}' completed for '${result.id}'`),
+    `  ${chalk.dim('Details:')} ${result.details}`,
+  ].join('\n');
 }

@@ -5,6 +5,7 @@ import { GitEngine } from '../git/engine.js';
 import { MetadataStore } from '../metadata/store.js';
 import { resolveBaseBranch } from '../git/base-resolver.js';
 import { scaffoldArtifacts } from '../artifact/scaffold.js';
+import { DoctorEngine, DoctorReport, ProposedRepair } from './doctor.js';
 import {
   CommandOutput,
   ExitCode,
@@ -37,9 +38,43 @@ export interface DropOptions {
   dryRun?: boolean;
 }
 
+export interface StatusOptions {
+  fetch?: boolean;
+}
+
+export interface SyncOptions {
+  strategy?: 'rebase' | 'merge' | 'ff-only';
+  fetch?: boolean;
+  dryRun?: boolean;
+}
+
+export interface DoctorOptions {
+  fix?: boolean;
+  yes?: boolean;
+  dryRun?: boolean;
+}
+
+export interface CleanOptions {
+  merged?: boolean;
+  staleDays?: number;
+  state?: string;
+  force?: boolean;
+  yes?: boolean;
+  dryRun?: boolean;
+}
+
+export interface RecoverOptions {
+  rebuildMetadata?: boolean;
+  reattachWorktree?: boolean;
+  reattachBranch?: boolean;
+  yes?: boolean;
+  dryRun?: boolean;
+}
+
 export class MannostreeOrchestrator {
   public git: GitEngine;
   public store: MetadataStore;
+  public doctorEngine: DoctorEngine;
 
   constructor(
     public repoRoot: string,
@@ -47,6 +82,7 @@ export class MannostreeOrchestrator {
   ) {
     this.git = new GitEngine(repoRoot);
     this.store = new MetadataStore(repoRoot, config);
+    this.doctorEngine = new DoctorEngine(repoRoot, config, this.git, this.store);
   }
 
   public async spawn(options: SpawnOptions): Promise<CommandOutput<WorktreeRecord>> {
@@ -252,7 +288,7 @@ export class MannostreeOrchestrator {
     const fullPath = path.resolve(this.repoRoot, record.worktree_path);
     const existsOnDisk = fs.existsSync(fullPath);
     const branchExists = await this.git.branchOrRefExists(record.branch);
-    const gitState = await this.git.getGitState(record.worktree_path);
+    const gitState = await this.git.getGitState(record.worktree_path, record.base_branch, record.branch);
 
     const liveHealth: HealthMetadata = {
       exists_on_disk: existsOnDisk,
@@ -276,6 +312,418 @@ export class MannostreeOrchestrator {
       warnings: [],
       errors: [],
     };
+  }
+
+  public async status(
+    id: string,
+    options: StatusOptions = {}
+  ): Promise<CommandOutput<WorktreeRecord & { live_health: HealthMetadata }>> {
+    const record = await this.store.getWorktree(id);
+    if (!record) {
+      throw new MannostreeError(
+        `Worktree '${id}' not found in metadata registry.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    if (options.fetch) {
+      try {
+        await this.git.fetchAll(path.resolve(this.repoRoot, record.worktree_path));
+      } catch {
+        // Warning if fetch fails (e.g. offline)
+      }
+    }
+
+    const fullPath = path.resolve(this.repoRoot, record.worktree_path);
+    const existsOnDisk = fs.existsSync(fullPath);
+    const branchExists = await this.git.branchOrRefExists(record.branch);
+    const gitState = await this.git.getGitState(record.worktree_path, record.base_branch, record.branch);
+
+    const liveHealth: HealthMetadata = {
+      exists_on_disk: existsOnDisk,
+      branch_exists: branchExists,
+      metadata_consistent: true,
+      last_health_check_at: new Date().toISOString(),
+      health_status: existsOnDisk && branchExists ? 'ok' : 'degraded',
+    };
+
+    const enriched: WorktreeRecord & { live_health: HealthMetadata } = {
+      ...record,
+      git_state: gitState,
+      live_health: liveHealth,
+    };
+
+    return {
+      command: 'status',
+      ok: true,
+      dry_run: false,
+      result: enriched,
+      warnings: [],
+      errors: [],
+    };
+  }
+
+  public async sync(
+    id: string,
+    options: SyncOptions = {}
+  ): Promise<
+    CommandOutput<{
+      id: string;
+      strategy: string;
+      base_branch: string;
+      branch: string;
+    }>
+  > {
+    const { strategy = 'rebase', fetch = true, dryRun = false } = options;
+
+    const record = await this.store.getWorktree(id);
+    if (!record) {
+      throw new MannostreeError(
+        `Worktree '${id}' not found in metadata registry.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    const fullPath = path.resolve(this.repoRoot, record.worktree_path);
+    if (!fs.existsSync(fullPath)) {
+      throw new MannostreeError(
+        `Worktree directory for '${id}' is missing on disk: ${record.worktree_path}`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    if (fetch && !dryRun) {
+      try {
+        await this.git.fetchAll(fullPath);
+      } catch {
+        // ignore fetch failures in local/offline repos
+      }
+    }
+
+    await this.git.syncWorktree(record.worktree_path, record.base_branch, strategy, dryRun);
+
+    if (!dryRun) {
+      record.last_activity_at = new Date().toISOString();
+      record.git_state = await this.git.getGitState(record.worktree_path, record.base_branch, record.branch);
+      await this.store.saveWorktree(record);
+    }
+
+    return {
+      command: 'sync',
+      ok: true,
+      dry_run: dryRun,
+      result: {
+        id,
+        strategy,
+        base_branch: record.base_branch,
+        branch: record.branch,
+      },
+      warnings: [],
+      errors: [],
+    };
+  }
+
+  public async doctor(
+    options: DoctorOptions = {}
+  ): Promise<CommandOutput<DoctorReport & { repairs_applied?: ProposedRepair[] }>> {
+    const { fix = false, yes = false, dryRun = false } = options;
+
+    const report = await this.doctorEngine.diagnose();
+
+    let repairsApplied: ProposedRepair[] | undefined;
+    if (fix) {
+      if (!yes && !dryRun) {
+        throw new MannostreeError(
+          `Doctor found ${report.proposed_repairs.length} repairable issue(s). To execute repairs, rerun with --yes or preview with --dry-run.`,
+          ExitCode.USAGE_ERROR
+        );
+      }
+
+      const { applied } = await this.doctorEngine.applyRepairs(
+        report.proposed_repairs,
+        dryRun
+      );
+      repairsApplied = applied;
+    }
+
+    return {
+      command: 'doctor',
+      ok: report.healthy,
+      dry_run: dryRun,
+      result: {
+        ...report,
+        repairs_applied: repairsApplied,
+      },
+      warnings: report.findings.filter((f) => f.severity === 'warning').map((f) => f.message),
+      errors: report.findings.filter((f) => f.severity === 'error').map((f) => f.message),
+    };
+  }
+
+  public async clean(
+    options: CleanOptions = {}
+  ): Promise<
+    CommandOutput<{
+      candidates: string[];
+      cleaned: string[];
+      reasons: Record<string, string>;
+    }>
+  > {
+    const {
+      merged = false,
+      staleDays,
+      state,
+      force = false,
+      yes = false,
+      dryRun = false,
+    } = options;
+
+    const isExplicitFilterProvided = merged || staleDays !== undefined || state !== undefined;
+    const records = await this.store.listWorktrees();
+    const candidateMap: Record<string, string> = {};
+
+    const now = Date.now();
+
+    for (const record of records) {
+      // 1. Never clean protected winner variants
+      if (record.parallel?.winner && this.config.cleanup?.protect_winner) {
+        continue;
+      }
+
+      let matches = false;
+      let reason = '';
+
+      if (merged) {
+        const isMerged = await this.git.isBranchMerged(record.branch, record.base_branch);
+        if (isMerged) {
+          matches = true;
+          reason = `Branch '${record.branch}' is fully merged into base '${record.base_branch}'`;
+        }
+      }
+
+      if (staleDays !== undefined && !matches) {
+        const lastActive = new Date(record.last_activity_at || record.updated_at).getTime();
+        const daysOld = (now - lastActive) / (1000 * 60 * 60 * 24);
+        if (daysOld >= staleDays) {
+          matches = true;
+          reason = `Inactive for ${Math.floor(daysOld)} days (threshold: ${staleDays} days)`;
+        }
+      }
+
+      if (state !== undefined && !matches) {
+        if (
+          record.lifecycle_state.toLowerCase() === state.toLowerCase() ||
+          record.status.toLowerCase() === state.toLowerCase()
+        ) {
+          matches = true;
+          reason = `Matches state filter '${state}'`;
+        }
+      }
+
+      if (matches) {
+        candidateMap[record.id] = reason;
+      }
+    }
+
+    const candidateIds = Object.keys(candidateMap);
+
+    // If no explicit filter was provided, clean acts as candidate report / requires filter
+    if (!isExplicitFilterProvided) {
+      return {
+        command: 'clean',
+        ok: true,
+        dry_run: true,
+        result: {
+          candidates: candidateIds,
+          cleaned: [],
+          reasons: candidateMap,
+        },
+        warnings: [
+          'No cleanup filters supplied (--merged, --stale-days <N>, or --state <S>). Reporting all candidate worktrees in dry-run mode.',
+        ],
+        errors: [],
+      };
+    }
+
+    // If filter supplied but no --yes, default to preview (dry-run)
+    const effectiveDryRun = dryRun || !yes;
+    const cleanedIds: string[] = [];
+
+    if (!effectiveDryRun) {
+      for (const id of candidateIds) {
+        try {
+          await this.drop(id, {
+            force,
+            archive: this.config.cleanup?.archive_on_drop,
+            dryRun: false,
+          });
+          cleanedIds.push(id);
+        } catch (err: any) {
+          // Skip dirty worktrees if not force
+        }
+      }
+    }
+
+    return {
+      command: 'clean',
+      ok: true,
+      dry_run: effectiveDryRun,
+      result: {
+        candidates: candidateIds,
+        cleaned: cleanedIds,
+        reasons: candidateMap,
+      },
+      warnings: !yes
+        ? ['Cleanup preview only. To execute real removal, supply --yes flag.']
+        : [],
+      errors: [],
+    };
+  }
+
+  public async recover(
+    id: string,
+    options: RecoverOptions = {}
+  ): Promise<
+    CommandOutput<{
+      id: string;
+      action: string;
+      success: boolean;
+      details: string;
+    }>
+  > {
+    const {
+      rebuildMetadata = false,
+      reattachWorktree = false,
+      reattachBranch = false,
+      yes = false,
+      dryRun = false,
+    } = options;
+
+    const actionCount = [rebuildMetadata, reattachWorktree, reattachBranch].filter(Boolean).length;
+    if (actionCount !== 1) {
+      throw new MannostreeError(
+        'Please specify exactly one repair mode for recover: --rebuild-metadata, --reattach-worktree, or --reattach-branch.',
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    let record = await this.store.getWorktree(id);
+    const fullPath = record
+      ? path.resolve(this.repoRoot, record.worktree_path)
+      : path.resolve(this.repoRoot, this.config.worktree_root, id.replace(/^[a-z]+-/, ''));
+
+    const effectiveDryRun = dryRun || !yes;
+
+    if (rebuildMetadata) {
+      if (!fs.existsSync(fullPath)) {
+        throw new MannostreeError(
+          `Cannot rebuild metadata for '${id}': directory does not exist at '${fullPath}'.`,
+          ExitCode.USAGE_ERROR
+        );
+      }
+
+      const branch = (await this.git.getCurrentBranchIn(fullPath)) || `feature/${id.replace(/^[a-z]+-/, '')}`;
+      const now = new Date().toISOString();
+
+      if (!effectiveDryRun) {
+        const reconstructed: WorktreeRecord = {
+          version: 1,
+          id,
+          repo_root: this.repoRoot,
+          worktree_path: path.relative(this.repoRoot, fullPath),
+          branch,
+          base_branch: this.config.default_base_branch,
+          created_at: now,
+          updated_at: now,
+          status: 'recovered',
+          lifecycle_state: 'WORKTREE_READY',
+        };
+        await this.store.saveWorktree(reconstructed);
+      }
+
+      return {
+        command: 'recover',
+        ok: true,
+        dry_run: effectiveDryRun,
+        result: {
+          id,
+          action: 'rebuild-metadata',
+          success: true,
+          details: `Reconstructed metadata for '${id}' from on-disk worktree at '${fullPath}'.`,
+        },
+        warnings: !yes ? ['Preview only. Add --yes to apply repair.'] : [],
+        errors: [],
+      };
+    }
+
+    if (reattachWorktree) {
+      if (!record) {
+        throw new MannostreeError(
+          `Cannot reattach worktree: record '${id}' not found in metadata registry.`,
+          ExitCode.USAGE_ERROR
+        );
+      }
+
+      const branchExists = await this.git.branchOrRefExists(record.branch);
+      if (!branchExists) {
+        throw new MannostreeError(
+          `Cannot reattach worktree: branch '${record.branch}' does not exist in git.`,
+          ExitCode.USAGE_ERROR
+        );
+      }
+
+      if (!effectiveDryRun) {
+        if (!fs.existsSync(fullPath)) {
+          await this.git.exec(['worktree', 'add', fullPath, record.branch]);
+        }
+        await this.git.repairWorktree(fullPath);
+      }
+
+      return {
+        command: 'recover',
+        ok: true,
+        dry_run: effectiveDryRun,
+        result: {
+          id,
+          action: 'reattach-worktree',
+          success: true,
+          details: `Reattached worktree directory at '${fullPath}' to branch '${record.branch}'.`,
+        },
+        warnings: !yes ? ['Preview only. Add --yes to apply repair.'] : [],
+        errors: [],
+      };
+    }
+
+    if (reattachBranch) {
+      if (!record) {
+        throw new MannostreeError(
+          `Cannot reattach branch: record '${id}' not found in metadata registry.`,
+          ExitCode.USAGE_ERROR
+        );
+      }
+
+      if (!effectiveDryRun) {
+        const branchExists = await this.git.branchOrRefExists(record.branch);
+        if (!branchExists) {
+          await this.git.exec(['branch', record.branch, record.base_branch]);
+        }
+      }
+
+      return {
+        command: 'recover',
+        ok: true,
+        dry_run: effectiveDryRun,
+        result: {
+          id,
+          action: 'reattach-branch',
+          success: true,
+          details: `Recreated git branch '${record.branch}' from base '${record.base_branch}'.`,
+        },
+        warnings: !yes ? ['Preview only. Add --yes to apply repair.'] : [],
+        errors: [],
+      };
+    }
+
+    throw new MannostreeError('Invalid recover request.', ExitCode.USAGE_ERROR);
   }
 
   public async drop(

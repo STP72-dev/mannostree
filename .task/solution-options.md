@@ -1,110 +1,85 @@
-# Solution Options: Phase 1 Core Foundation
+# Solution Options: Phase 2 Operational Safety & Diagnostics
 
-## Option 1: Layered Modular Architecture (TypeScript + Commander + Zod + Direct Git Engine)
+## Option 1: Integrated Orchestrator with Dedicated Engine Extensions (Recommended)
 
-### Architecture
-- Clean layered architecture as prescribed in `docs/02-project-kickoff/architecture.md`:
-  - `src/cli/`: CLI layer (Commander.js, argument parsing, output formatting for text/json/yaml, global flags, exit code mapping).
-  - `src/core/`: Application/orchestration layer (coordinating operations, lifecycle rule enforcement, dry-run routing).
-  - `src/config/`: Configuration loader, schema validator, profile manager.
-  - `src/git/`: Git/worktree engine wrapping git commands with dry-run capabilities.
-  - `src/metadata/`: Metadata engine (atomic file operations, registry and worktree record validation/querying).
-  - `src/artifact/`: Task artifact scaffolding (`.task/` directory + `RESULTS.md`).
-- Modules communicate via typed interfaces and domain objects.
+### Architecture & Module Boundaries
+- Extends existing Phase 1 modules without breaking contracts:
+  - `src/git/engine.ts`: Add `getAheadBehindCount`, `isBranchMerged`, `syncWorktree` (with automatic abort on conflict), `repairWorktree`, `listPorcelainWorktrees`.
+  - `src/core/doctor.ts`: Dedicated diagnostic analyzer evaluating registry vs disk, git refs, untracked directories, and schema health.
+  - `src/core/orchestrator.ts`: Implement `status`, `sync`, `doctor`, `clean`, and `recover`.
+  - `src/cli/commands/`: Add `status.ts`, `sync.ts`, `doctor.ts`, `clean.ts`, `recover.ts`.
 
-### Files/Modules Affected
-- `package.json`, `tsconfig.json`, `vitest.config.ts`
-- `bin/mannostree.js` (CLI entry executable)
-- `src/index.ts`
-- `src/types/index.ts` (shared domain models)
-- `src/config/schema.ts`, `src/config/loader.ts`
-- `src/metadata/schema.ts`, `src/metadata/store.ts`
-- `src/git/engine.ts`, `src/git/base-resolver.ts`
-- `src/artifact/scaffold.ts`
-- `src/core/orchestrator.ts`
-- `src/cli/commands/spawn.ts`, `src/cli/commands/drop.ts`, `src/cli/commands/list.ts`, `src/cli/commands/info.ts`
-- `tests/unit/`, `tests/integration/`
+### State Transitions & Metadata Impact
+- `status`: Enriches `git_state` and returns live status without mutating metadata files on disk unless `--fetch` refreshes refs.
+- `sync`: Updates worktree `git_state` and `last_activity_at` upon successful rebase/merge.
+- `doctor`: Read-only. `--fix` updates registry/worktree records according to confirmed repair actions.
+- `clean`: Transitions removed worktrees to `CLEANED` / archived metadata.
+- `recover`: Transitions unrecoverable or damaged worktrees to `BROKEN` if repair fails, or updates metadata upon successful repair.
 
-### Metadata/Lifecycle Implications
-- Full adherence to `.mannostree/registry.json` and `.mannostree/worktrees/<id>.json`.
-- Strict schema versioning (`version: 1`), atomic temp-write-and-rename.
-- Explicit lifecycle transitions (`WORKTREE_READY`, `CONTEXT_PACKED`).
+### Dry-Run & Confirmation Behavior
+- All state-mutating commands (`sync`, `clean`, `recover`, `doctor --fix`) implement full `--dry-run` plans.
+- `clean` defaults to dry-run reporting unless an explicit filter AND `--yes` are provided.
+- `doctor --fix` requires explicit `--yes` for state mutations.
 
-### Failure & Recovery Behavior
-- Validation failures output structured error summaries with exit code 3.
-- Git command failures captured cleanly with exit code 4.
-- Atomic file operations ensure no partial metadata writes on crash.
+### Error & Exit-Code Behavior
+- `ExitCode.USAGE_ERROR` (2): Missing required options, invalid flags.
+- `ExitCode.VALIDATION_FAILURE` (3): Missing filters on destructive clean, schema violations.
+- `ExitCode.GIT_ERROR` (4): Git command failure, sync conflict (with aborted state).
+- `ExitCode.METADATA_INCONSISTENCY` (6): Doctor reports critical metadata corruption.
+- `ExitCode.RECOVERABLE_BROKEN_STATE` (20): Doctor or recover encounters repairable broken state.
 
-### Tests
-- Unit tests for config loading, metadata schemas, base resolver, git wrapper, artifact generation.
-- End-to-end integration tests using isolated temporary git repositories testing real worktree spawn, list, info, and drop workflows.
+### Test Strategy
+- Unit tests for git engine sync rollback, merge detection, ahead/behind calculation.
+- Unit tests for doctor diagnostic rules across mock inconsistencies.
+- Integration tests for end-to-end `status`, `sync` with conflicts, `clean` filters, `doctor --fix`, and `recover` repair flows in temp git repos.
 
-### Risks & Reversibility
-- Low risk. Minimal external runtime dependencies (`commander`, `yaml`, `zod`, `chalk`). Standard ESM TypeScript.
-- Highly reversible and extensible for Phase 2+ (parallel engine, doctor, github adapter).
-
-### Estimated Change Scope
-- Medium (~15-20 TypeScript source files + test suite).
+### Failure, Recovery, Scope & Reversibility
+- If sync encounters conflict, it immediately aborts (`git rebase --abort` / `git merge --abort`) and reports conflict files safely.
+- Clean and recover never touch untracked worktrees or the main workspace.
+- Minimal blast radius; 100% backward compatible with Phase 1.
 
 ---
 
-## Option 2: Monolithic Orchestrator with Minimal Dependencies (Zero-Schema Native Types)
+## Option 2: Standalone Sub-Engine per Command Family
 
-### Architecture
-- Consolidates git, metadata, config, and artifact routines into a single monolithic `Mannostree` service class with lightweight manual type guards instead of Zod.
-- Custom CLI parser instead of Commander.
+### Architecture & Module Boundaries
+- Creates separate isolated sub-packages (`src/status/`, `src/sync/`, `src/doctor/`, `src/clean/`, `src/recover/`), each instantiating their own Git and Metadata handles.
 
-### Files/Modules Affected
-- `package.json`, `tsconfig.json`
-- `src/cli.ts`
-- `src/mannostree.ts`
-- `src/git.ts`
-- `src/types.ts`
-- `tests/e2e.test.ts`
+### State Transitions & Metadata Impact
+- Duplicates git status and metadata querying across sub-engines.
 
-### Metadata/Lifecycle Implications
-- Metadata JSON written directly with manual validation.
-- Higher likelihood of subtle schema drift if fields are added without runtime schema enforcement.
+### Dry-Run & Confirmation Behavior
+- Implements dry-run independently in each sub-engine.
 
-### Failure & Recovery Behavior
-- Less granular validation errors; syntax errors in config or metadata may cause generic parse exceptions.
+### Error & Exit-Code Behavior
+- Uses standard exit codes, but potential inconsistencies across sub-packages.
 
-### Tests
-- Focused primarily on end-to-end black-box CLI tests.
+### Test Strategy
+- Tests written per sub-package.
 
-### Risks & Reversibility
-- Harder to maintain and extend for Phase 2+ commands (doctor, parallel, publish).
-- Difficult to ensure atomic consistency and comprehensive error reporting across growing features.
-
-### Estimated Change Scope
-- Small (~5-8 files), but higher technical debt.
+### Failure, Recovery, Scope & Reversibility
+- Higher risk of state drift due to duplicated orchestrator logic.
+- More boilerplate, heavier refactoring of Phase 1 orchestrator boundaries.
 
 ---
 
-## Option 3: Shell/Subprocess Adapter Wrapped in TypeScript
+## Option 3: External Script Execution with CLI Shell Facade
 
-### Architecture
-- Wraps bash/shell scripts for git worktree lifecycle operations, exposing a TypeScript CLI facade for argument handling.
-- Shell scripts handle directory creation and git invocation; TS handles JSON metadata output.
+### Architecture & Module Boundaries
+- Implements shell scripts (`scripts/sync.sh`, `scripts/doctor.sh`, `scripts/clean.sh`) invoked via child processes from Node.
 
-### Files/Modules Affected
-- `scripts/worktree-spawn.sh`, `scripts/worktree-drop.sh`
-- `src/cli.ts`, `src/executor.ts`
-- `package.json`
+### State Transitions & Metadata Impact
+- State transitions managed across process boundaries.
 
-### Metadata/Lifecycle Implications
-- Split lifecycle ownership between shell scripts and TypeScript metadata layer.
-- Contradicts ADR-001 ("Mannostree replaces legacy worktree scripts as the single lifecycle layer").
+### Dry-Run & Confirmation Behavior
+- Hard to enforce deterministic dry-run previews in shell scripts.
 
-### Failure & Recovery Behavior
-- Inconsistent cross-platform behavior (Windows/macOS/Linux shell quirks).
-- Poor atomicity guarantees if shell script partially executes before TS metadata updates.
+### Error & Exit-Code Behavior
+- Fragile exit code parsing.
 
-### Tests
-- Requires testing shell scripts and TS wrappers separately.
+### Test Strategy
+- Requires testing bash scripts across environments.
 
-### Risks & Reversibility
-- High risk. Violates ADR-001 and project safety rules regarding explicit deterministic lifecycle ownership.
-
-### Estimated Change Scope
-- Medium (~10 files), fragile and hard to audit.
+### Failure, Recovery, Scope & Reversibility
+- Disqualified by ADR-001 (Mannostree is the single lifecycle layer; no external shell scripts).
+- High risk of data loss on cleanup/sync.

@@ -1,35 +1,37 @@
-# Pull Request: Mannostree Phase 1 Core Foundation
+# Pull Request: Mannostree Phase 2 Operational Safety & Diagnostics
 
 ## Summary
-Implements the Phase 1 core foundation for Mannostree, establishing the TypeScript/Node CLI, declarative configuration parsing, atomic metadata store, git worktree lifecycle manager, artifact scaffolding, and `spawn`, `list`, `info`, and `drop` commands.
+Implements Phase 2 Operational Safety & Diagnostics for **Mannostree**, delivering `status`, `sync`, `doctor`, `clean`, and `recover` commands while preserving 100% backward compatibility with Phase 1.
 
 ## Changes
-- **Scaffold & Build Setup**:
-  - `package.json`, `tsconfig.json`, `vitest.config.ts`, `bin/mannostree.js`.
-- **Configuration Engine**:
-  - `.mannostree.yml` loader and Zod schema validation in `src/config/`.
-- **Metadata Engine**:
-  - Versioned, atomic write-temp-and-rename metadata persistence for `.mannostree/registry.json` and `.mannostree/worktrees/<id>.json` in `src/metadata/`.
-- **Git & Base Resolution Engine**:
-  - Explicit base-branch resolution hierarchy forbidding implicit fallback to current branch in `src/git/base-resolver.ts`.
-  - Direct git execution wrapper for worktree creation, removal, and status inspection in `src/git/engine.ts`.
-- **Artifact Engine**:
-  - Automatic `.task/` and `RESULTS.md` scaffolding in `src/artifact/scaffold.ts`.
-- **CLI Commands & Orchestrator**:
-  - `spawn`, `list`, `info`, `drop` commands in `src/cli/` and `src/core/orchestrator.ts`.
-  - Full support for `--json`, `--yaml`, `--plain`, `--verbose`, `--quiet`, and `--dry-run`.
+- **Git & Worktree Engine Extensions**:
+  - `getAheadBehindCount`: Fast, accurate commit counting vs base branch.
+  - `isBranchMerged`: Merge-base ancestry checking for branch lifecycle.
+  - `syncWorktree`: Safe rebase/merge with automated rollback (`git rebase --abort` / `git merge --abort`) on conflict.
+  - `listPorcelainWorktrees`, `repairWorktree`, `listLocalBranches`, `fetchAll`.
+- **Doctor Diagnostic Engine**:
+  - Added `src/core/doctor.ts` detecting missing directories, missing branches, schema inconsistencies, unindexed files, orphan branches, and untracked folders (strictly non-mutating).
+- **Core Orchestrator**:
+  - Implemented `status`, `sync`, `doctor`, `clean`, and `recover` methods in `src/core/orchestrator.ts`.
+- **CLI Commands & Output Formatters**:
+  - Added `status.ts`, `sync.ts`, `doctor.ts`, `clean.ts`, `recover.ts` to `src/cli/commands/`.
+  - Added formatters for diagnostics, cleanup summaries, and sync/recovery results in `src/cli/output.ts`.
+  - Updated CLI command tree in `src/cli/index.ts`.
 - **Automated Tests**:
-  - 19 unit and integration tests across 6 test suites with 100% pass rate.
+  - Added unit test suites (`tests/unit/sync.test.ts`, `tests/unit/doctor.test.ts`, `tests/unit/clean.test.ts`, `tests/unit/recover.test.ts`) and integration suite (`tests/integration/phase2.test.ts`).
+  - Total tests: 32/32 passed across 11 test suites.
+- **Documentation**:
+  - Updated `README.md` and durable task artifacts.
 
 ## Validation
-- `npm run lint`: Passed (zero TypeScript errors).
-- `npm run build`: Passed (clean compilation to `dist/`).
-- `npm test`: Passed (19/19 tests across `tests/unit/` and `tests/integration/`).
+- `npm run lint`: Passed (0 type errors).
+- `npm run build`: Passed (Clean compilation to `dist/`).
+- `npm test -- --run`: Passed (32/32 tests passed in 905ms).
 
 ## Review
 - Independent review verdict: **PASSED**.
-- All Mannostree safety invariants (explicit base, atomic persistence, safety gates on drop) are verified.
+- All safety invariants verified (read-only diagnostics, sync conflict abort, multi-gate cleanup, untracked directory preservation).
 
 ## Safety & No-Auto-Merge Policy
-- **No Automatic Merge**: This change follows the repository policy requiring manual review and explicit winner selection. Auto-merge is disabled.
+- **No Automatic Merge**: Manual inspection and explicit user commands required.
 - **Publishing Mode**: `prepare-only`.

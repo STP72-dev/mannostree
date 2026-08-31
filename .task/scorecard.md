@@ -1,33 +1,35 @@
-# Solution Evaluation & Scorecard
+# Solution Evaluation & Scorecard: Phase 2 Operational Safety & Diagnostics
 
 ## Hard Gates
 
-| Gate | Requirement | Option 1 (Layered Modular) | Option 2 (Monolithic) | Option 3 (Shell Wrapper) |
-|------|-------------|----------------------------|-----------------------|--------------------------|
-| **1. Explicit Base Compatibility** | Strictly requires explicit base resolution | **PASS** | **PASS** | FAIL (Shell defaults risk) |
-| **2. No Hidden Lifecycle Action** | Mannostree strictly owns worktree creation/removal | **PASS** | **PASS** | **FAIL** (Violates ADR-001) |
-| **3. No Auto-Merge / Implicit Cleanup** | Winner pick and drop are explicit | **PASS** | **PASS** | **PASS** |
-| **4. Secret Safety** | No copying of secrets without explicit policy | **PASS** | **PASS** | **PASS** |
-| **5. Metadata / Recovery Correctness** | Atomic writes and versioned schema | **PASS** | **PASS** | FAIL (Partial write risk) |
-| **6. Testability** | Direct unit and integration verification | **PASS** | **PASS** | FAIL (Brittle shell mocks) |
+| Gate | Requirement | Option 1 (Integrated Extensions) | Option 2 (Sub-Engines) | Option 3 (Shell Scripts) |
+|------|-------------|----------------------------------|------------------------|--------------------------|
+| **1. Explicit Base Selection** | Enforces deterministic base branch | **PASS** | **PASS** | FAIL |
+| **2. No Raw-Worker Lifecycle** | Mannostree strictly owns lifecycle | **PASS** | **PASS** | **FAIL** (ADR-001) |
+| **3. Read-Only Diagnostics** | `status` and `doctor` are read-only by default | **PASS** | **PASS** | FAIL |
+| **4. Preview & Confirmation** | `clean` and `recover` require preview/`--yes` | **PASS** | **PASS** | FAIL |
+| **5. No Fallback File Deletion** | Safe git removal without ad-hoc rm | **PASS** | **PASS** | FAIL |
+| **6. No Untracked Mutation** | Untracked worktrees are never touched | **PASS** | **PASS** | FAIL |
+| **7. No Auto-Merge / Cleanup** | Explicit user action required | **PASS** | **PASS** | **PASS** |
+| **8. Documented Schema Integrity** | Full schema versioning and consistency | **PASS** | **PASS** | FAIL |
 | **Result** | | **QUALIFIED** | **QUALIFIED** | **DISQUALIFIED** |
 
 ---
 
 ## Weighted Scoring (Qualified Options)
 
-| Evaluation Dimension | Weight | Option 1 (Layered Modular) | Option 2 (Monolithic) |
-|----------------------|--------|----------------------------|-----------------------|
-| **Product & Acceptance Fit** | 25 | 25 | 18 |
-| **Safety & Lifecycle Alignment** | 25 | 25 | 19 |
-| **Verification & Recoverability** | 20 | 19 | 14 |
-| **Maintainability & Scope Discipline** | 15 | 14 | 10 |
-| **Delivery & Reversibility** | 15 | 14 | 11 |
-| **Total Score** | **100** | **97** | **72** |
+| Evaluation Dimension | Weight | Option 1 (Integrated Extensions) | Option 2 (Sub-Engines) |
+|----------------------|--------|----------------------------------|------------------------|
+| **Safety & Data Preservation** | 30 | 30 | 24 |
+| **Specification & Acceptance Fit** | 25 | 25 | 21 |
+| **Diagnostics & Recoverability** | 20 | 20 | 16 |
+| **Compatibility & Maintainability** | 15 | 14 | 10 |
+| **Implementation Scope & Reversibility** | 10 | 9 | 6 |
+| **Total Score** | **100** | **98** | **77** |
 
 ---
 
 ## Decision Record
-- **Selected Option**: **Option 1 (Layered Modular Architecture)**.
-- **Rationale**: Option 1 achieves a score of **97/100** (exceeding the threshold of 80 and surpassing Option 2 by 25 points). It implements the exact layered architecture, ADRs, and schema invariants defined in the repository design documents.
-- **Parallel Variant Decision**: Single-path execution (Parallel-variant permission set to `never`).
+- **Selected Option**: **Option 1 (Integrated Orchestrator with Dedicated Engine Extensions)**.
+- **Rationale**: Option 1 scores **98/100**, exceeding the 80-point qualification threshold and leading Option 2 by 21 points. It preserves Phase 1 contracts while cleanly adding `status`, `sync`, `doctor`, `clean`, and `recover`.
+- **Parallel Variants**: Forbidden (`never`).

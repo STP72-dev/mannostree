@@ -7,6 +7,7 @@ Developer workspace lifecycle manager — git worktrees for parallel task execut
 ## Features
 
 - **Safe Worktree Lifecycle**: Explicit base branch resolution and isolated branch/worktree creation.
+- **Operational Safety & Diagnostics**: Real-time status reporting, safe base synchronization with automatic conflict abort, comprehensive system diagnostics (`doctor`), safe bulk cleanup, and targeted recovery.
 - **Atomic Metadata Registry**: Versioned, split metadata architecture (`.mannostree/registry.json` + `.mannostree/worktrees/<id>.json`) with atomic write-temp-and-rename guarantees.
 - **Config-Driven Policies**: Centralized repository policies defined in `.mannostree.yml`.
 - **Artifact-First Workflow**: Automatic scaffolding of `.task/` contract and verification files (`task-contract.md`, `solution-options.md`, `implementation-plan.md`, `quality-gates.md`, `review.md`, and `RESULTS.md`).
@@ -71,11 +72,12 @@ cleanup:
 
 ---
 
-## Core Commands
+## CLI Commands
 
-### 1. Spawn a Worktree
+### Workspace Lifecycle (Phase 1)
+
+#### 1. Spawn a Worktree
 Create an isolated development workspace from an explicit base branch:
-
 ```bash
 # Create feature workspace
 mannostree spawn my-feature -b main
@@ -84,26 +86,23 @@ mannostree spawn my-feature -b main
 mannostree spawn my-feature -b main --dry-run
 ```
 
-### 2. List Worktrees
+#### 2. List Worktrees
 Enumerate active tracked worktrees:
-
 ```bash
 mannostree list
 
-# JSON output
+# Structured JSON output
 mannostree list --json
 ```
 
-### 3. Inspect Worktree Info
-View detailed worktree metadata, git state, and live health status:
-
+#### 3. Inspect Worktree Info
+View detailed worktree record, git state, and live health status:
 ```bash
 mannostree info feature-my-feature
 ```
 
-### 4. Drop a Worktree
+#### 4. Drop a Worktree
 Safely remove a worktree and its branch:
-
 ```bash
 # Remove clean worktree
 mannostree drop feature-my-feature
@@ -113,6 +112,62 @@ mannostree drop feature-my-feature --force
 
 # Retain git branch
 mannostree drop feature-my-feature --keep-branch
+```
+
+---
+
+### Operational Safety & Diagnostics (Phase 2)
+
+#### 5. Worktree Status
+Inspect live git ahead/behind counts against base, dirty/untracked/conflict state, and lifecycle metadata:
+```bash
+mannostree status feature-my-feature
+
+# Fetch remote refs before inspecting
+mannostree status feature-my-feature --fetch
+```
+
+#### 6. Synchronize Base Branch (`sync`)
+Safely rebase or merge a worktree with its base branch (automatically aborts and restores on conflict):
+```bash
+# Rebase against base branch
+mannostree sync feature-my-feature --strategy rebase
+
+# Preview sync action
+mannostree sync feature-my-feature --dry-run
+```
+
+#### 7. Health Diagnostics (`doctor`)
+Audit tracked metadata against on-disk folders, git branches, and orphan refs:
+```bash
+# Read-only diagnosis
+mannostree doctor
+
+# Apply repair plan
+mannostree doctor --fix --yes
+```
+
+#### 8. Bulk Cleanup (`clean`)
+Report and safely remove merged or stale worktrees:
+```bash
+# Candidate report (dry-run preview)
+mannostree clean --merged
+
+# Execute cleanup for merged worktrees
+mannostree clean --merged --yes
+
+# Cleanup stale worktrees older than 14 days
+mannostree clean --stale-days 14 --yes
+```
+
+#### 9. Workspace Recovery (`recover`)
+Repair damaged metadata or reattach worktrees and branches:
+```bash
+# Reconstruct metadata from on-disk directory
+mannostree recover feature-my-feature --rebuild-metadata --yes
+
+# Reattach missing worktree directory
+mannostree recover feature-my-feature --reattach-worktree --yes
 ```
 
 ---

@@ -6,6 +6,16 @@ import { ExitCode, GitStateMetadata, MannostreeError } from '../types/index.js';
 
 const execFileAsync = promisify(execFile);
 
+export interface PorcelainWorktreeEntry {
+  path: string;
+  head: string;
+  branch?: string;
+  bare?: boolean;
+  detached?: boolean;
+  locked?: boolean;
+  prunable?: boolean;
+}
+
 export class GitEngine {
   constructor(public workingDir: string = process.cwd()) {}
 
@@ -72,6 +82,18 @@ export class GitEngine {
     }
   }
 
+  public async fetchAll(cwd: string = this.workingDir): Promise<void> {
+    try {
+      await this.exec(['fetch', '--all', '--prune'], cwd);
+    } catch (err: any) {
+      // If no remotes or offline, report warning/error gracefully
+      throw new MannostreeError(
+        `Git fetch failed: ${err.message}`,
+        ExitCode.GIT_ERROR
+      );
+    }
+  }
+
   public async isWorktreeDirty(worktreePath: string): Promise<boolean> {
     const fullPath = path.resolve(this.workingDir, worktreePath);
     if (!fs.existsSync(fullPath)) return false;
@@ -80,7 +102,54 @@ export class GitEngine {
     return stdout.length > 0;
   }
 
-  public async getGitState(worktreePath: string): Promise<GitStateMetadata> {
+  public async getAheadBehindCount(
+    worktreePath: string,
+    baseBranch: string,
+    branch?: string
+  ): Promise<{ ahead: number; behind: number }> {
+    const fullPath = path.resolve(this.workingDir, worktreePath);
+    if (!fs.existsSync(fullPath)) {
+      return { ahead: 0, behind: 0 };
+    }
+
+    try {
+      const targetBranch = branch || (await this.getCurrentBranchIn(fullPath)) || 'HEAD';
+      const { stdout } = await this.exec(
+        ['rev-list', '--left-right', '--count', `${baseBranch}...${targetBranch}`],
+        fullPath
+      );
+      const [behindStr, aheadStr] = stdout.split(/\s+/);
+      const behind = parseInt(behindStr, 10) || 0;
+      const ahead = parseInt(aheadStr, 10) || 0;
+      return { ahead, behind };
+    } catch {
+      return { ahead: 0, behind: 0 };
+    }
+  }
+
+  public async getCurrentBranchIn(dir: string): Promise<string | null> {
+    try {
+      const { stdout } = await this.exec(['branch', '--show-current'], dir);
+      return stdout || null;
+    } catch {
+      return null;
+    }
+  }
+
+  public async isBranchMerged(branch: string, baseBranch: string): Promise<boolean> {
+    try {
+      await this.exec(['merge-base', '--is-ancestor', branch, baseBranch]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  public async getGitState(
+    worktreePath: string,
+    baseBranch?: string,
+    branch?: string
+  ): Promise<GitStateMetadata> {
     const fullPath = path.resolve(this.workingDir, worktreePath);
     if (!fs.existsSync(fullPath)) {
       return {
@@ -111,15 +180,204 @@ export class GitEngine {
     );
     const dirty = statusLines.length > 0;
 
+    let ahead = 0;
+    let behind = 0;
+    if (baseBranch) {
+      const ab = await this.getAheadBehindCount(worktreePath, baseBranch, branch);
+      ahead = ab.ahead;
+      behind = ab.behind;
+    }
+
     return {
       head_commit: headCommit,
       head_commit_message: headCommitMessage,
       dirty,
-      ahead_count: 0,
-      behind_count: 0,
+      ahead_count: ahead,
+      behind_count: behind,
       has_untracked_files: hasUntracked,
       has_conflicts: hasConflicts,
     };
+  }
+
+  public async syncWorktree(
+    worktreePath: string,
+    baseBranch: string,
+    strategy: 'rebase' | 'merge' | 'ff-only' = 'rebase',
+    dryRun: boolean = false
+  ): Promise<{ strategy: string; conflicts?: string[] }> {
+    const fullPath = path.resolve(this.workingDir, worktreePath);
+
+    if (!fs.existsSync(fullPath)) {
+      throw new MannostreeError(
+        `Worktree directory does not exist: ${worktreePath}`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    const isDirty = await this.isWorktreeDirty(fullPath);
+    if (isDirty) {
+      throw new MannostreeError(
+        `Cannot sync: worktree '${worktreePath}' has uncommitted or untracked changes. Stash or commit them before syncing.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    if (dryRun) {
+      return { strategy };
+    }
+
+    if (strategy === 'rebase') {
+      try {
+        await this.exec(['rebase', baseBranch], fullPath);
+        return { strategy };
+      } catch (err: any) {
+        // Capture conflict status before aborting
+        let conflictFiles: string[] = [];
+        try {
+          const statusRes = await this.exec(['status', '--porcelain'], fullPath);
+          conflictFiles = statusRes.stdout
+            .split('\n')
+            .filter((l) => l.startsWith('UU') || l.startsWith('AA') || l.startsWith('UD') || l.startsWith('DU'))
+            .map((l) => l.substring(3).trim());
+        } catch {
+          // ignore
+        }
+
+        // Abort rebase cleanly
+        try {
+          await this.exec(['rebase', '--abort'], fullPath);
+        } catch {
+          // ignore
+        }
+
+        throw new MannostreeError(
+          `Sync rebase failed due to merge conflicts on base '${baseBranch}'. Rebase was automatically aborted to preserve clean state.`,
+          ExitCode.GIT_ERROR,
+          { strategy: 'rebase', conflicts: conflictFiles }
+        );
+      }
+    } else if (strategy === 'merge') {
+      try {
+        await this.exec(['merge', baseBranch, '--no-edit'], fullPath);
+        return { strategy };
+      } catch (err: any) {
+        let conflictFiles: string[] = [];
+        try {
+          const statusRes = await this.exec(['status', '--porcelain'], fullPath);
+          conflictFiles = statusRes.stdout
+            .split('\n')
+            .filter((l) => l.startsWith('UU') || l.startsWith('AA') || l.startsWith('UD') || l.startsWith('DU'))
+            .map((l) => l.substring(3).trim());
+        } catch {
+          // ignore
+        }
+
+        try {
+          await this.exec(['merge', '--abort'], fullPath);
+        } catch {
+          // ignore
+        }
+
+        throw new MannostreeError(
+          `Sync merge failed due to conflicts on base '${baseBranch}'. Merge was automatically aborted to preserve clean state.`,
+          ExitCode.GIT_ERROR,
+          { strategy: 'merge', conflicts: conflictFiles }
+        );
+      }
+    } else if (strategy === 'ff-only') {
+      try {
+        await this.exec(['merge', '--ff-only', baseBranch], fullPath);
+        return { strategy };
+      } catch (err: any) {
+        throw new MannostreeError(
+          `Sync ff-only failed: branch cannot be fast-forwarded to base '${baseBranch}'.`,
+          ExitCode.GIT_ERROR
+        );
+      }
+    }
+
+    throw new MannostreeError(
+      `Unknown sync strategy '${strategy}'. Supported: rebase, merge, ff-only.`,
+      ExitCode.USAGE_ERROR
+    );
+  }
+
+  public async listPorcelainWorktrees(): Promise<PorcelainWorktreeEntry[]> {
+    try {
+      const { stdout } = await this.exec(['worktree', 'list', '--porcelain']);
+      const entries: PorcelainWorktreeEntry[] = [];
+      const blocks = stdout.split('\n\n').filter(Boolean);
+
+      for (const block of blocks) {
+        const lines = block.split('\n');
+        let wtPath = '';
+        let head = '';
+        let branch: string | undefined;
+        let bare = false;
+        let detached = false;
+        let locked = false;
+        let prunable = false;
+
+        for (const line of lines) {
+          if (line.startsWith('worktree ')) {
+            wtPath = line.substring(9).trim();
+          } else if (line.startsWith('HEAD ')) {
+            head = line.substring(5).trim();
+          } else if (line.startsWith('branch ')) {
+            const fullRef = line.substring(7).trim();
+            branch = fullRef.replace(/^refs\/heads\//, '');
+          } else if (line === 'bare') {
+            bare = true;
+          } else if (line === 'detached') {
+            detached = true;
+          } else if (line.startsWith('locked')) {
+            locked = true;
+          } else if (line.startsWith('prunable')) {
+            prunable = true;
+          }
+        }
+
+        if (wtPath) {
+          entries.push({
+            path: wtPath,
+            head,
+            branch,
+            bare,
+            detached,
+            locked,
+            prunable,
+          });
+        }
+      }
+
+      return entries;
+    } catch {
+      return [];
+    }
+  }
+
+  public async listLocalBranches(): Promise<string[]> {
+    try {
+      const { stdout } = await this.exec(['branch', '--format=%(refname:short)']);
+      return stdout.split('\n').map((s) => s.trim()).filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+
+  public async repairWorktree(worktreePath?: string): Promise<void> {
+    try {
+      const args = ['worktree', 'repair'];
+      if (worktreePath) {
+        args.push(path.resolve(this.workingDir, worktreePath));
+      }
+      await this.exec(args);
+    } catch (err: any) {
+      throw new MannostreeError(
+        `Failed to repair worktree: ${err.message}`,
+        ExitCode.GIT_ERROR
+      );
+    }
   }
 
   public async createBranchAndWorktree(
