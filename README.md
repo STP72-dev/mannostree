@@ -9,7 +9,7 @@ Developer workspace lifecycle manager — git worktrees for parallel task execut
 - **Safe Worktree Lifecycle**: Explicit base branch resolution and isolated branch/worktree creation.
 - **Operational Safety & Diagnostics**: Real-time status reporting, safe base synchronization with automatic conflict abort, comprehensive system diagnostics (`doctor`), safe bulk cleanup, and targeted recovery.
 - **Project-Aware Setup & Profiles**: Automated dependency bootstrapping (`setup`), explicit environment file policy management (`env`), and in-worktree command execution (`exec`).
-- **Parallel Variant Workflows**: First-class multi-hypothesis branching (`parallel spawn`), side-by-side metric comparisons (`parallel compare`), and explicit winner selection (`parallel pick`) with strict no-auto-merge and no-auto-delete invariants.
+- **Parallel Variant Workflows**: First-class multi-hypothesis branching (`parallel spawn`), parallel experiment inventory (`parallel list`), side-by-side metric comparisons (`parallel compare`), explicit winner selection (`parallel pick`), and safe group decommissioning (`parallel drop`).
 - **Artifacts, Publishing, & Handoffs**: Auto-compiled pull request documentation from durable `.task/` markdown files (`pr`), GitHub issue linking (`issue`), artifact completeness auditing (`task`), and successor agent handoffs (`handoff`).
 - **Atomic Metadata Registry**: Versioned, split metadata architecture (`.mannostree/registry.json` + `.mannostree/worktrees/<id>.json` + `.mannostree/experiments/<feature>.json`) with atomic write-temp-and-rename guarantees.
 - **Config-Driven Policies**: Centralized repository policies defined in `.mannostree.yml`.
@@ -243,7 +243,16 @@ mannostree parallel spawn auth-spike -n 3 -b main
 mannostree parallel spawn auth-spike -n 3 -b main --dry-run
 ```
 
-#### 14. Compare Variants Side-by-Side (`parallel compare`)
+#### 14. List Parallel Experiments (`parallel list`)
+Enumerate all parallel experiment groups and their current states:
+```bash
+mannostree parallel list
+
+# Filter by status
+mannostree parallel list --status active
+```
+
+#### 15. Compare Variants Side-by-Side (`parallel compare`)
 Inspect comparative ahead/behind counts, diff statistics (+/- lines, changed files), and validation outcomes:
 ```bash
 # Tabular terminal comparison
@@ -253,7 +262,7 @@ mannostree parallel compare auth-spike
 mannostree parallel compare auth-spike --json
 ```
 
-#### 15. Pick Winner (`parallel pick`)
+#### 16. Pick Winner (`parallel pick`)
 Explicitly promote the winning variant in experiment metadata (never auto-merges or auto-deletes losers):
 ```bash
 # Select variant 1 as winner
@@ -263,11 +272,21 @@ mannostree parallel pick auth-spike --winner v1 --reason "Superior query perform
 mannostree parallel pick auth-spike --winner v1 --cleanup-losers --yes
 ```
 
+#### 17. Drop Experiment Group (`parallel drop`)
+Safely remove all variant worktrees associated with an experiment group:
+```bash
+# Preview dropping experiment variants
+mannostree parallel drop auth-spike
+
+# Execute dropping all variants and branches
+mannostree parallel drop auth-spike --yes --force
+```
+
 ---
 
 ### Artifacts, Publishing, & Ecosystem Integration (Phase 5)
 
-#### 16. Prepare or Publish Pull Requests (`pr`)
+#### 18. Prepare or Publish Pull Requests (`pr`)
 Compile PR descriptions from `.task/` markdown files and optionally publish to GitHub:
 ```bash
 # Compile and save PR description locally (prepare-only)
@@ -277,19 +296,19 @@ mannostree pr feature-my-feature
 mannostree pr feature-my-feature --push
 ```
 
-#### 17. Link GitHub Issue (`issue`)
+#### 19. Link GitHub Issue (`issue`)
 Associate an existing GitHub issue with a worktree workspace:
 ```bash
 mannostree issue feature-my-feature --from-issue 42 --title "Refactor authentication flow"
 ```
 
-#### 18. Audit Task Artifacts (`task`)
+#### 20. Audit Task Artifacts (`task`)
 Verify completeness and validity of required durable `.task/` artifacts:
 ```bash
 mannostree task feature-my-feature --validate
 ```
 
-#### 19. Generate Workspace Handoff (`handoff`)
+#### 21. Generate Workspace Handoff (`handoff`)
 Export comprehensive handoff packages for successor agents or human reviewers:
 ```bash
 mannostree handoff feature-my-feature --to "Senior Reviewer" --notes "All unit and integration tests passing."
@@ -302,7 +321,11 @@ mannostree handoff feature-my-feature --to "Senior Reviewer" --notes "All unit a
 Run the automated test suite with Vitest:
 
 ```bash
+# Run tests
 npm test
+
+# Run tests with code coverage report
+npm run coverage
 ```
 
 ---

@@ -61,6 +61,22 @@ export interface ParallelPickResult {
   experiment: ExperimentRecord;
 }
 
+export interface ParallelDropOptions {
+  feature: string;
+  force?: boolean;
+  keepBranch?: boolean;
+  archive?: boolean;
+  yes?: boolean;
+  dryRun?: boolean;
+}
+
+export interface ParallelDropResult {
+  feature: string;
+  dropped_variants: string[];
+  experiment_deleted: boolean;
+  experiment: ExperimentRecord;
+}
+
 export class ParallelEngine {
   constructor(
     public repoRoot: string,
@@ -330,6 +346,73 @@ export class ParallelEngine {
       feature: sanitizedFeature,
       winner: winnerId,
       cleaned_losers: cleanedLosers,
+      experiment,
+    };
+  }
+
+  public async listExperiments(status?: string): Promise<ExperimentRecord[]> {
+    const experiments = await this.store.listExperiments();
+    if (status) {
+      return experiments.filter((e) => e.status === status);
+    }
+    return experiments;
+  }
+
+  public async dropExperiment(options: ParallelDropOptions): Promise<ParallelDropResult> {
+    const {
+      feature,
+      force = false,
+      keepBranch = false,
+      archive = false,
+      yes = false,
+      dryRun = false,
+    } = options;
+
+    const sanitizedFeature = feature.replace(/[^a-zA-Z0-9._-]/g, '-').replace(/\/+/g, '-');
+    const experiment = await this.store.getExperiment(sanitizedFeature);
+
+    if (!experiment) {
+      throw new MannostreeError(
+        `Experiment '${sanitizedFeature}' not found in metadata store.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    const droppedVariants: string[] = [];
+
+    if (!yes && !dryRun) {
+      return {
+        feature: sanitizedFeature,
+        dropped_variants: experiment.variants,
+        experiment_deleted: false,
+        experiment,
+      };
+    }
+
+    if (!dryRun) {
+      for (const vId of experiment.variants) {
+        try {
+          await this.dropWorktreeFn(vId, {
+            force,
+            keepBranch,
+            archive,
+            dryRun: false,
+          });
+          droppedVariants.push(vId);
+        } catch {
+          // continue dropping remaining variants
+        }
+      }
+
+      await this.store.deleteExperiment(sanitizedFeature);
+    } else {
+      droppedVariants.push(...experiment.variants);
+    }
+
+    return {
+      feature: sanitizedFeature,
+      dropped_variants: droppedVariants,
+      experiment_deleted: !dryRun && yes,
       experiment,
     };
   }

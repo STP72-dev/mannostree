@@ -133,4 +133,71 @@ describe('Parallel Engine', () => {
     expect(fs.existsSync(v1Path)).toBe(true);
     expect(fs.existsSync(v2Path)).toBe(false);
   });
+
+  it('lists parallel experiments and filters by status', async () => {
+    await orchestrator.parallelSpawn({
+      feature: 'feature-a',
+      count: 2,
+      baseBranch: 'main',
+    });
+
+    await orchestrator.parallelSpawn({
+      feature: 'feature-b',
+      count: 2,
+      baseBranch: 'main',
+    });
+
+    await orchestrator.parallelPick({
+      feature: 'feature-a',
+      winner: 'v1',
+    });
+
+    const allList = await orchestrator.parallelList();
+    expect(allList.ok).toBe(true);
+    expect(allList.result?.length).toBe(2);
+
+    const activeList = await orchestrator.parallelList('active');
+    expect(activeList.result?.length).toBe(1);
+    expect(activeList.result?.[0].feature).toBe('feature-b');
+
+    const completedList = await orchestrator.parallelList('completed');
+    expect(completedList.result?.length).toBe(1);
+    expect(completedList.result?.[0].feature).toBe('feature-a');
+  });
+
+  it('drops entire parallel experiment group with confirmation', async () => {
+    await orchestrator.parallelSpawn({
+      feature: 'drop-test',
+      count: 2,
+      baseBranch: 'main',
+    });
+
+    const v1Path = path.join(tempRepo, '.worktrees', 'drop-test-v1');
+    const v2Path = path.join(tempRepo, '.worktrees', 'drop-test-v2');
+    expect(fs.existsSync(v1Path)).toBe(true);
+    expect(fs.existsSync(v2Path)).toBe(true);
+
+    // Preview without yes
+    const previewRes = await orchestrator.parallelDrop({
+      feature: 'drop-test',
+      yes: false,
+    });
+    expect(previewRes.ok).toBe(true);
+    expect(previewRes.result?.experiment_deleted).toBe(false);
+    expect(fs.existsSync(v1Path)).toBe(true);
+
+    // Drop with yes
+    const dropRes = await orchestrator.parallelDrop({
+      feature: 'drop-test',
+      yes: true,
+      force: true,
+    });
+    expect(dropRes.ok).toBe(true);
+    expect(dropRes.result?.experiment_deleted).toBe(true);
+    expect(fs.existsSync(v1Path)).toBe(false);
+    expect(fs.existsSync(v2Path)).toBe(false);
+
+    const checkExp = await orchestrator.store.getExperiment('drop-test');
+    expect(checkExp).toBeNull();
+  });
 });

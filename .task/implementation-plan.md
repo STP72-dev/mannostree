@@ -1,37 +1,23 @@
-# Implementation Plan: GitHub CLI Adapter Verification & Coverage Measurement
+# Implementation Plan: Parallel Experiment Lifecycle Commands (`parallel list`, `parallel drop`)
 
 ## Overview
-Implement the injected `GhAdapter` in `src/core/publish.ts`, connect it to `MannostreeOrchestrator`, write comprehensive unit and integration tests proving the `--push` publishing flow, and verify code coverage metrics.
+Implement `listExperiments` and `dropExperiment` in `src/core/parallel.ts`, wire them into `MannostreeOrchestrator`, add CLI commands `parallel list` and `parallel drop`, and verify with unit/integration tests.
 
-## Detailed Tasks
+## Changes
 
-### 1. `GhExecutor` in `src/core/publish.ts`
-- Define `GhExecutor` type.
-- Implement default `defaultGhExecutor` using `execFileAsync('gh', args, { cwd })`.
-- Update `PublishEngine` to invoke `this.ghExecutor(ghArgs, worktreeFullPath)`.
-- Extract PR URL and number via regex.
+### 1. `src/core/parallel.ts`
+- Add `listExperiments(status?: string): Promise<ExperimentRecord[]>`.
+- Add `dropExperiment(options: ParallelDropOptions): Promise<ParallelDropResult>`.
 
-### 2. Comprehensive Test Suite
-- `tests/unit/publish.test.ts`:
-  - Test `--push` with mock `ghExecutor` returning PR URL.
-  - Test `--push` with `--draft` flag.
-  - Test `--push` when `gh` returns error (fails gracefully, records pushed branch).
-- `tests/integration/publish-push.test.ts`:
-  - End-to-end integration test with local git remote and mock `gh` executable on PATH.
+### 2. `src/core/orchestrator.ts`
+- Add `parallelList` and `parallelDrop`.
 
-### 3. Verification & Code Coverage
-- Run `npm run lint`.
-- Run `npm run build`.
-- Run `npm run coverage` and document exact coverage statistics in `.task/quality-gates.md`.
+### 3. `src/cli/output.ts`
+- Add `formatParallelListResult` and `formatParallelDropResult`.
 
----
+### 4. `src/cli/commands/parallel.ts`
+- Register `parallel list` and `parallel drop` subcommands.
 
-## Acceptance-to-Test Traceability Matrix
-
-| Acceptance Item | Implementation | Test Suite |
-|-----------------|----------------|------------|
-| `gh pr create` argument formatting | `PublishEngine.publishPr` | `tests/unit/publish.test.ts` |
-| PR number & URL parsing | `PublishEngine.publishPr` | `tests/unit/publish.test.ts` |
-| Fallback on `gh` error | `PublishEngine.publishPr` | `tests/unit/publish.test.ts` |
-| End-to-end `--push` workflow | `PublishEngine` + `GitEngine` | `tests/integration/publish-push.test.ts` |
-| Code Coverage Reporting | `@vitest/coverage-v8` | `npm run coverage` |
+### 5. Automated Tests
+- Unit tests in `tests/unit/parallel.test.ts`.
+- Integration tests in `tests/integration/phase4.test.ts`.

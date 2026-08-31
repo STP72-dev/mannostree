@@ -13,6 +13,8 @@ import {
   ParallelComparisonReport,
   ParallelPickOptions,
   ParallelPickResult,
+  ParallelDropOptions,
+  ParallelDropResult,
 } from './parallel.js';
 import { PublishEngine, PrOptions, PrResult, GhExecutor } from './publish.js';
 import { TaskEngine, TaskValidationResult, HandoffReport } from './task.js';
@@ -1017,6 +1019,36 @@ export class MannostreeOrchestrator {
       result: res,
       warnings: !options.yes && options.cleanupLosers
         ? ['Cleanup losers preview only. Add --yes to delete non-winning variants.']
+        : [],
+      errors: [],
+    };
+  }
+
+  public async parallelList(
+    status?: string
+  ): Promise<CommandOutput<ExperimentRecord[]>> {
+    const records = await this.parallelEngine.listExperiments(status);
+    return {
+      command: 'parallel list',
+      ok: true,
+      dry_run: false,
+      result: records,
+      warnings: [],
+      errors: [],
+    };
+  }
+
+  public async parallelDrop(
+    options: ParallelDropOptions
+  ): Promise<CommandOutput<ParallelDropResult>> {
+    const res = await this.parallelEngine.dropExperiment(options);
+    return {
+      command: 'parallel drop',
+      ok: true,
+      dry_run: !!options.dryRun,
+      result: res,
+      warnings: !options.yes && !options.dryRun
+        ? [`Drop experiment preview only. Add --yes to delete all variants of '${options.feature}'.`]
         : [],
       errors: [],
     };

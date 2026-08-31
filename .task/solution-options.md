@@ -1,44 +1,15 @@
-# Solution Options: GitHub CLI Adapter & Safe Binary Execution
+# Solution Options: Parallel Experiment Lifecycle Commands
 
-## Option 1: Injected `GhAdapter` / `GhExecutor` with Native `execFile` Default (Recommended)
+## Option 1: First-Class `ParallelEngine` Lifecycle Extensions (Recommended)
+- Extend `ParallelEngine` with `listExperiments()` and `dropExperiment()`.
+- Expose `parallelList` and `parallelDrop` on `MannostreeOrchestrator`.
+- Register `parallel list` and `parallel drop` in `src/cli/commands/parallel.ts`.
+- Enforce strict confirmation gates (`--yes` required to perform real deletions).
 
-### Architecture & Module Boundaries
-- Introduce `GhExecutor` interface in `src/core/publish.ts`:
-  ```ts
-  export type GhExecutor = (args: string[], cwd: string) => Promise<{ stdout: string; stderr: string }>;
-  ```
-- `PublishEngine` takes optional `ghExecutor` in constructor. Default uses `execFileAsync('gh', args, { cwd })`.
-- `GitEngine` handles pure `git` commands; `PublishEngine` orchestrates git push + `gh` CLI invocation.
+## Option 2: Script-Based Looping via `mannostree drop`
+- Users manually loop over variant IDs and invoke `mannostree drop <id>`.
+- Fails to clean up `.mannostree/experiments/<feature>.json` metadata record.
 
-### State Transitions & Metadata Impact
-- Accurately captures `pr_url` and `pr_number` into `record.publish` and updates `lifecycle_state: 'PR_OPEN'`.
-
-### Dry-Run & Safety Invariants
-- When `dryRun: true` or `push: false`, neither git push nor `gh pr create` is invoked.
-- Full testability: Unit and integration tests can inject mock `GhExecutor` to verify argument serialization without network side-effects.
-
----
-
-## Option 2: Global Process Monkey-Patching in Tests
-
-### Architecture & Module Boundaries
-- Hardcode `child_process.execFile` in `PublishEngine` and use Vitest `vi.spyOn` in test suites.
-
-### State Transitions & Metadata Impact
-- Brittle in concurrent test runs; couples tests to internal Node.js module loading mechanisms.
-
-### Dry-Run & Safety Invariants
-- High risk of leaking real process invocations across test boundaries.
-
----
-
-## Option 3: Shell String Interpolation via `child_process.exec`
-
-### Architecture & Module Boundaries
-- Formats shell string `gh pr create --head "${branch}" ...` and executes via shell interpreter.
-
-### State Transitions & Metadata Impact
-- Vulnerable to shell injection if branch or title contains unescaped special characters.
-
-### Dry-Run & Safety Invariants
-- Disqualified by security risks.
+## Option 3: Recursive Hard Unlink
+- Directly delete `.worktrees/` directories and remove git branches with raw commands without health checking.
+- Violates safety invariants and leaves broken porcelain worktrees.

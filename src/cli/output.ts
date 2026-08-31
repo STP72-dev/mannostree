@@ -3,7 +3,11 @@ import chalk from 'chalk';
 import { CommandOutput, GlobalOptions, WorktreeRecord, ExperimentRecord } from '../types/index.js';
 import { DoctorReport } from '../core/doctor.js';
 import { SetupApplyResult, EnvApplyResult } from '../core/setup.js';
-import { ParallelComparisonReport, ParallelPickResult } from '../core/parallel.js';
+import {
+  ParallelComparisonReport,
+  ParallelPickResult,
+  ParallelDropResult,
+} from '../core/parallel.js';
 import { PrResult } from '../core/publish.js';
 import { TaskValidationResult, HandoffReport } from '../core/task.js';
 
@@ -318,6 +322,41 @@ export function formatParallelCompareResult(report: ParallelComparisonReport): s
   return lines.join('\n');
 }
 
+export function formatParallelListResult(records: ExperimentRecord[]): string {
+  if (records.length === 0) {
+    return chalk.dim('No tracked parallel experiments found.');
+  }
+
+  const headers = ['FEATURE', 'BASE BRANCH', 'VARIANTS', 'STATUS', 'WINNER', 'CREATED'];
+  const rows = records.map((e) => [
+    e.feature,
+    e.base_branch,
+    String(e.variants.length),
+    e.status,
+    e.winner || '-',
+    e.created_at,
+  ]);
+
+  const colWidths = headers.map((h, i) => {
+    return Math.max(h.length, ...rows.map((row) => row[i].length));
+  });
+
+  const pad = (str: string, width: number) => str.padEnd(width);
+
+  const headerLine = chalk.bold(headers.map((h, i) => pad(h, colWidths[i])).join('  '));
+  const separatorLine = chalk.dim(colWidths.map((w) => '─'.repeat(w)).join('  '));
+  const dataLines = rows.map((row) =>
+    row.map((cell, i) => {
+      if (cell === 'active') return chalk.cyan(pad(cell, colWidths[i]));
+      if (cell === 'completed') return chalk.green(pad(cell, colWidths[i]));
+      if (cell === 'cleaned') return chalk.dim(pad(cell, colWidths[i]));
+      return pad(cell, colWidths[i]);
+    }).join('  ')
+  );
+
+  return [headerLine, separatorLine, ...dataLines].join('\n');
+}
+
 export function formatParallelPickResult(
   result: ParallelPickResult,
   dryRun: boolean
@@ -332,6 +371,29 @@ export function formatParallelPickResult(
     lines.push(chalk.dim(`Cleaned ${result.cleaned_losers.length} losing variant(s): ${result.cleaned_losers.join(', ')}`));
   } else {
     lines.push(chalk.dim('Losing variants were preserved on disk and in git.'));
+  }
+
+  return lines.join('\n');
+}
+
+export function formatParallelDropResult(
+  result: ParallelDropResult,
+  dryRun: boolean
+): string {
+  const lines: string[] = [
+    dryRun
+      ? chalk.yellow(`Plan: would drop experiment '${result.feature}' and ${result.dropped_variants.length} variant worktree(s)`)
+      : result.experiment_deleted
+        ? chalk.green(`✔ Successfully dropped experiment '${result.feature}' and ${result.dropped_variants.length} variant(s)`)
+        : chalk.yellow(`Found ${result.dropped_variants.length} variant(s) in experiment '${result.feature}'`),
+  ];
+
+  for (const v of result.dropped_variants) {
+    lines.push(`  - ${chalk.bold(v)}`);
+  }
+
+  if (!dryRun && !result.experiment_deleted) {
+    lines.push(chalk.dim('\nTo execute deletion of all variant worktrees and branches, pass `--yes`.'));
   }
 
   return lines.join('\n');

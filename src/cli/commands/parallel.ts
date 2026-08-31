@@ -5,8 +5,10 @@ import { GitEngine } from '../../git/engine.js';
 import {
   formatOutput,
   formatParallelSpawnResult,
+  formatParallelListResult,
   formatParallelCompareResult,
   formatParallelPickResult,
+  formatParallelDropResult,
 } from '../output.js';
 import { GlobalOptions } from '../../types/index.js';
 
@@ -44,6 +46,28 @@ export function registerParallelCommand(program: Command): void {
 
       formatOutput(result, globalOpts, (data, dryRun) =>
         formatParallelSpawnResult(data, dryRun)
+      );
+    });
+
+  // parallel list
+  parallelCmd
+    .command('list')
+    .description('List all tracked parallel experiment groups')
+    .option('--status <status>', 'Filter by status (active, completed, cleaned)')
+    .action(async (cmdOptions: any) => {
+      const globalOpts = program.opts<GlobalOptions>();
+      const cwd = globalOpts.cwd ? globalOpts.cwd : process.cwd();
+
+      const config = loadConfig(globalOpts.config, cwd);
+      const git = new GitEngine(cwd);
+      const repoRoot = await git.getRepoRoot();
+
+      const orchestrator = new MannostreeOrchestrator(repoRoot, config);
+
+      const result = await orchestrator.parallelList(cmdOptions.status);
+
+      formatOutput(result, globalOpts, (data) =>
+        formatParallelListResult(data)
       );
     });
 
@@ -99,6 +123,38 @@ export function registerParallelCommand(program: Command): void {
 
       formatOutput(result, globalOpts, (data, dryRun) =>
         formatParallelPickResult(data, dryRun)
+      );
+    });
+
+  // parallel drop
+  parallelCmd
+    .command('drop <feature>')
+    .description('Safely drop an entire parallel experiment group and all its variant worktrees')
+    .option('--force', 'Force drop dirty worktrees', false)
+    .option('--keep-branch', 'Retain git branches', false)
+    .option('--archive', 'Archive metadata records', false)
+    .option('-y, --yes', 'Confirm deletion of all variant worktrees and branches', false)
+    .action(async (feature: string, cmdOptions: any) => {
+      const globalOpts = program.opts<GlobalOptions>();
+      const cwd = globalOpts.cwd ? globalOpts.cwd : process.cwd();
+
+      const config = loadConfig(globalOpts.config, cwd);
+      const git = new GitEngine(cwd);
+      const repoRoot = await git.getRepoRoot();
+
+      const orchestrator = new MannostreeOrchestrator(repoRoot, config);
+
+      const result = await orchestrator.parallelDrop({
+        feature,
+        force: cmdOptions.force,
+        keepBranch: cmdOptions.keepBranch,
+        archive: cmdOptions.archive,
+        yes: cmdOptions.yes,
+        dryRun: globalOpts.dryRun,
+      });
+
+      formatOutput(result, globalOpts, (data, dryRun) =>
+        formatParallelDropResult(data, dryRun)
       );
     });
 }
