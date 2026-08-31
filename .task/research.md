@@ -1,32 +1,32 @@
-# Research & Technical Decisions: Phase 4 Parallel Variant Workflows
+# Research & Technical Decisions: Phase 5 Artifacts, Publishing, & Ecosystem Integration
 
 ## Context & Objectives
-Phase 4 implements parallel variant exploration and comparison workflows. This enables engineers and AI agents to concurrently prototype alternative implementations from an identical base commit, evaluate diffs and validation metrics side-by-side, and explicitly promote a winning variant without risking accidental code merges or unintended deletions.
+Phase 5 delivers the publishing, task artifact validation, issue linking, and agent handoff subsystem for Mannostree. It bridges local worktree lifecycle state with external collaboration systems (GitHub, CI/CD, autonomous agent swarms) while enforcing prepare-only safety defaults.
 
 ## Research Findings & Decision Impact
 
-### 1. Experiment Record & Topology Architecture
-- **Source**: `AGENTS.md` and `docs/02-project-kickoff/cli-spec.md`.
+### 1. Artifact-First PR Compilation
+- **Source**: ADR-005 & `CLAUDE.md`.
 - **Findings**:
-  - Parallel variants for feature `<name>` must follow canonical naming:
-    - Worktree directory: `.worktrees/<feature>-v<N>`
-    - Git branch: `experiment/<feature>-v<N>`
-    - Worktree record ID: `experiment-<feature>-v<N>`
-  - Persistent record: `.mannostree/experiments/<feature>.json`.
-  - Shared base branch requirement: All N variants must branch from the exact same explicit base commit.
-- **Decision Impact**: Implement `ParallelEngine` in `src/core/parallel.ts` orchestrating variant spawn, group metadata registration, comparison aggregation, and winner selection.
+  - The PR body should be deterministically composed from durable `.task/` markdown files:
+    - Summary & problem from `task-contract.md`
+    - Changes and files from `RESULTS.md`
+    - Verification & test breakdown from `quality-gates.md`
+    - Quality assurance and approval notes from `review.md`
+  - Output is saved to `.task/pr-body.md` in the worktree directory.
+- **Decision Impact**: Implement `PublishEngine` in `src/core/publish.ts` with `assemblePrBody(worktreeFullPath, record)`.
 
-### 2. Side-by-Side Diff & Metrics Extraction
-- **Source**: Git porcelain diff specifications (`git diff --shortstat <base>...<branch>`).
-- **Findings**:
-  - `git diff --shortstat <base>...<branch>` parses into files changed, insertions (+), and deletions (-).
-  - Combining this with `getAheadBehindCount` and `ValidationMetadata` gives complete comparison data across variants.
-- **Decision Impact**: Add `getDiffShortStat(worktreePath, baseBranch, branch)` to `GitEngine`.
-
-### 3. Winner Selection & No-Auto-Merge Invariants
+### 2. Prepare-Only Default & Safe Publishing
 - **Source**: `AGENTS.md` Hard Project Rules.
 - **Findings**:
-  - Winner selection must update `.mannostree/experiments/<feature>.json` and the winning worktree record's `parallel.winner = true`.
-  - Selection MUST NOT trigger `git merge` or merge into base.
-  - Losing variants MUST NOT be deleted unless the user explicitly supplies `--cleanup-losers --yes`.
-- **Decision Impact**: Implement `pick()` enforcing explicit winner marking and requiring separate confirmation for loser cleanup.
+  - Never push to remote or open PRs silently.
+  - Default behavior: assemble PR body and save locally in `prepare-only` mode.
+  - `--push`: Explicit opt-in flag to push branch and invoke `gh pr create` if GitHub CLI is installed.
+- **Decision Impact**: Implement `createPullRequest()` with explicit prepare-only gating.
+
+### 3. Task Artifact Validation & Handoff Summaries
+- **Source**: `docs/02-project-kickoff/cli-spec.md`.
+- **Findings**:
+  - `task <id> --validate`: Audits required files (`task-contract.md`, `implementation-plan.md`, `quality-gates.md`, `review.md`, `RESULTS.md`) and reports completeness score.
+  - `handoff <id>`: Structures a serialized snapshot of the workspace (git diffs, ahead/behind, task state, next recommended action) for successor agents or human reviewers.
+- **Decision Impact**: Implement `TaskEngine` in `src/core/task.ts` handling validation and handoff assembly.

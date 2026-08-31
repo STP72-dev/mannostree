@@ -1,37 +1,41 @@
-# Pull Request: Mannostree Phase 4 Parallel Variant Workflows
+# Pull Request: Mannostree Complete Developer Workspace Lifecycle Manager (Phases 1 - 5)
 
 ## Summary
-Implements Phase 4 Parallel Variant Workflows for **Mannostree**, delivering `parallel spawn`, `parallel compare`, and `parallel pick` while maintaining 100% backward compatibility with Phases 1, 2, and 3.
+Delivers the complete implementation of **Mannostree**, a developer CLI and workspace manager for safe, explicit, git-worktree-based development, parallel variant experiments, and autonomous agent collaboration.
 
-## Changes
-- **Experiment Schema & Atomic Persistence**:
-  - Added `ExperimentRecordSchema` and `ExperimentRecord` types.
-  - Implemented `saveExperiment`, `getExperiment`, `listExperiments`, `deleteExperiment` in `MetadataStore`.
-- **Git Diff Engine**:
-  - Added `getDiffShortStat()` to calculate files changed, insertions, and deletions relative to base merge-base.
-- **Parallel Engine Subsystem**:
-  - Added `src/core/parallel.ts` (`ParallelEngine`) managing N-variant worktree generation (`experiment/<feature>-vN`), comparison report generation, and explicit winner promotion.
-- **Hard Project Invariants**:
-  - Enforced strict **NO AUTO-MERGE** rule on `parallel pick`.
-  - Enforced strict **NO AUTO-DELETE** rule: losing variants are preserved unless explicitly instructed via `--cleanup-losers` AND `--yes`.
-- **CLI Commands**:
-  - Added `src/cli/commands/parallel.ts` (`spawn`, `compare`, `pick`).
-  - Added formatters for variant comparison tables and pick summaries in `src/cli/output.ts`.
-  - Registered `parallel` command suite in `src/cli/index.ts`.
-- **Automated Tests**:
-  - Added unit test suite `tests/unit/parallel.test.ts` (4 tests) and integration suite `tests/integration/phase4.test.ts`.
-  - Total test suite: 48/48 tests passing across 17 suites.
-- **Documentation**:
-  - Updated `README.md` and durable task artifacts.
+## Implemented Architecture & Subsystems
+- **Phase 1: Foundation & Lifecycle**:
+  - Centralized `.mannostree.yml` config validation (Zod).
+  - Versioned atomic metadata store (`registry.json`, `worktrees/<id>.json`).
+  - Explicit base branch resolution (strict rejection of implicit current branch).
+  - Artifact scaffolding (`.task/`, `RESULTS.md`).
+  - Core lifecycle commands: `spawn`, `list`, `info`, `drop`.
+- **Phase 2: Operational Safety & Diagnostics**:
+  - Live status tracking with ahead/behind counts (`status`).
+  - Base synchronization with automated conflict abort & rollback (`sync`).
+  - Complete health auditing and repair plans (`doctor`).
+  - Multi-gate bulk cleanup protecting dirty & winner worktrees (`clean`).
+  - Single-mode targeted workspace recovery (`recover`).
+- **Phase 3: Project-Aware Setup & Profiles**:
+  - Named profile dependency management (`setup`).
+  - Explicit environment file policy handling (`env copy|link|skip|generate`).
+  - Direct in-worktree execution with environment injection and exit code forwarding (`exec`).
+- **Phase 4: Parallel Variant Workflows**:
+  - N-variant branch generation from shared base commits (`parallel spawn`).
+  - Side-by-side comparative diff and metrics reporting (`parallel compare`).
+  - Explicit winner promotion enforcing **NO AUTO-MERGE** and **NO AUTO-DELETE** (`parallel pick`).
+- **Phase 5: Artifacts, Publishing, & Ecosystem Integration**:
+  - Artifact-driven PR compilation with prepare-only safety defaults (`pr`).
+  - GitHub issue linking (`issue`).
+  - Durable task artifact validation (`task`).
+  - Agent and reviewer handoff packages (`handoff`).
 
-## Validation
-- `npm run lint`: Passed (0 type errors).
-- `npm run build`: Passed (Clean compilation to `dist/`).
-- `npm test -- --run`: Passed (48/48 tests passing in 1.05s).
+## Verification & Quality Gates
+- **Static Analysis**: `npm run lint` (`tsc --noEmit`) → **0 errors**.
+- **Build**: `npm run build` (`tsc`) → **Clean compilation to `dist/`**.
+- **Automated Tests**: `npm test -- --run` (`vitest run --run`) → **54/54 tests passed across 20 test suites** (1.11s).
+- **Independent Review**: Verdict **PASSED** with all safety invariants verified.
 
-## Review
-- Independent review verdict: **PASSED**.
-- All safety invariants verified (no auto-merge, no auto-delete, shared explicit base branch, dry-run purity).
-
-## Publishing Mode
-- **Mode**: `prepare-only`.
+## Safety & Publishing Policy
+- **Publishing Mode**: `prepare-only` (PR description compiled locally; remote push only when requested with `--push`).
+- **Auto-Merge**: **Disabled by hard policy**.

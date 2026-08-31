@@ -1,54 +1,53 @@
-# Solution Options: Phase 4 Parallel Variant Workflows
+# Solution Options: Phase 5 Artifacts, Publishing, & Ecosystem Integration
 
-## Option 1: Integrated Parallel Engine with Dedicated Experiment Group Registry (Recommended)
+## Option 1: Integrated Publishing & Task Engine with Local Artifact Assembler (Recommended)
 
 ### Architecture & Module Boundaries
-- `src/metadata/schema.ts`: Define `ExperimentRecordSchema` and update `WorktreeRecordSchema.parallel`.
-- `src/metadata/store.ts`: Add atomic persistence for `.mannostree/experiments/<feature>.json` (`saveExperiment`, `getExperiment`, `listExperiments`).
-- `src/git/engine.ts`: Add `getDiffShortStat()` to compute diff metrics.
-- `src/core/parallel.ts`: Implement `ParallelEngine` managing `spawnVariants`, `compareVariants`, and `pickWinner`.
-- `src/core/orchestrator.ts`: Expose `parallelSpawn`, `parallelCompare`, `parallelPick`.
-- `src/cli/commands/parallel.ts`: CLI subcommand suite (`mannostree parallel spawn|compare|pick`).
+- `src/core/publish.ts`: `PublishEngine` handling PR assembly, GitHub CLI (`gh`) interop, prepare-only mode, and remote pushing.
+- `src/core/task.ts`: `TaskEngine` handling artifact completeness validation, issue linking, and handoff generation.
+- `src/core/orchestrator.ts`: Integrate `pr`, `issue`, `task`, and `handoff` methods into `MannostreeOrchestrator`.
+- `src/cli/commands/`: Add `pr.ts`, `issue.ts`, `task.ts`, `handoff.ts`.
 
 ### State Transitions & Metadata Impact
-- Atomic records in `.mannostree/experiments/<feature>.json` tracking variants list, winner status, selected_at, and plan mode.
-- Each variant worktree record updated with `parallel: { experiment_name, winner, selected }`.
+- Updates `publish` block: `pushed`, `pr_number`, `pr_url`, `published_at`.
+- Updates `task` block: `issue_number`, `issue_title`, `source_type`.
+- Transitions `lifecycle_state` to `PR_OPEN` (when PR is created) or `REVIEWED` / `TASK_RESOLVED`.
 
 ### Dry-Run & Safety Invariants
-- Full dry-run preview across `parallel spawn` and `parallel pick`.
-- Strict enforcement of NO AUTO-MERGE and NO AUTO-DELETE of losing variants without `--cleanup-losers --yes`.
+- `prepare-only` default prevents accidental remote git push operations.
+- Full dry-run preview across all mutating commands.
 
 ### Scope & Reversibility
-- Modular, fully reversible, 100% backward compatible with existing test suite.
+- Completely modular, clean abstractions, 100% backward compatible.
 
 ---
 
-## Option 2: Loose Scripted Variants without Group Registry
+## Option 2: Standalone Shell Script Wrappers around `gh`
 
 ### Architecture & Module Boundaries
-- Creates variants as ad-hoc single worktrees without persisting `.mannostree/experiments/<feature>.json`.
+- Delegates all PR generation and issue linking directly to external shell scripts without local artifact aggregation.
 
 ### State Transitions & Metadata Impact
-- Lacks group-level cohesion; comparison commands must guess variant relationships from string matching.
+- Fails to reliably update local `.mannostree/worktrees/<id>.json` metadata.
 
 ### Dry-Run & Safety Invariants
-- High risk of orphaned state and uncoordinated cleanup.
+- Cannot reliably simulate PR body generation in offline or CI environments.
 
 ### Scope & Reversibility
 - Fragile and violates metadata expectations in AGENTS.md.
 
 ---
 
-## Option 3: Auto-merging Worktree Orchestrator
+## Option 3: Remote Cloud Webhook Service
 
 ### Architecture & Module Boundaries
-- Automatically merges the selected winner into base branch during `pick` and deletes all other variants.
+- Offloads publishing to an external web service or GitHub App.
 
 ### State Transitions & Metadata Impact
-- Violates non-negotiable project rules.
+- Requires network infrastructure, external tokens, and server maintenance.
 
 ### Dry-Run & Safety Invariants
-- Disqualified by Hard Gate: Violates NO AUTO-MERGE rule.
+- Unnecessary complexity for a developer CLI tool.
 
 ### Scope & Reversibility
-- Destructive and unsafe.
+- Disqualified by complexity and infrastructure requirements.

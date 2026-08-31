@@ -1,54 +1,54 @@
-# Implementation Plan: Phase 4 Parallel Variant Workflows
+# Implementation Plan: Phase 5 Artifacts, Publishing, & Ecosystem Integration
 
 ## Overview
-Deliver Phase 4 Parallel Variant Workflows for **Mannostree**:
-- **Experiment Schema & Persistence**:
-  - Add `ExperimentRecordSchema` in `src/metadata/schema.ts`.
-  - Add `saveExperiment`, `getExperiment`, `listExperiments`, `deleteExperiment` in `src/metadata/store.ts`.
-- **Git Engine Shortstat**:
-  - Add `getDiffShortStat` in `src/git/engine.ts`.
-- **Parallel Engine (`src/core/parallel.ts`)**:
-  - `spawnVariants`: Validates base branch, spawns N variant worktrees (`experiment/<feature>-v<N>`), scaffolds artifacts, and saves experiment record.
-  - `compareVariants`: Reads all variant records, computes live git state and diff stats, returning structured comparison data.
-  - `pickWinner`: Validates winner selection, updates worktree and experiment metadata, enforces NO AUTO-MERGE, and preserves losing variants unless `--cleanup-losers --yes` is supplied.
+Deliver Phase 5 Artifacts, Publishing, & Ecosystem Integration for **Mannostree**:
+- **Publish Engine (`src/core/publish.ts`)**:
+  - `assemblePrBody`: Reads `.task/task-contract.md`, `RESULTS.md`, `.task/quality-gates.md`, and `.task/review.md` to compose a comprehensive PR body markdown document.
+  - `publishPr`: Saves `.task/pr-body.md`. In default `prepare-only` mode, generates and returns PR body without network calls. When `--push` is passed, runs `git push` and optionally calls `gh pr create` if GitHub CLI is installed.
+  - Updates worktree metadata (`publish.pushed`, `publish.pr_number`, `publish.pr_url`, `publish.published_at`, `lifecycle_state: 'PR_OPEN'`).
+- **Task Engine (`src/core/task.ts`)**:
+  - `linkIssue`: Associates GitHub issue number and title to worktree record and updates `.task/task-contract.md`.
+  - `validateArtifacts`: Checks required files (`task-contract.md`, `implementation-plan.md`, `quality-gates.md`, `review.md`, `RESULTS.md`) and calculates completeness score.
+  - `generateHandoff`: Builds comprehensive agent/human handoff summary.
 - **Orchestrator Integration**:
-  - Expose `parallelSpawn`, `parallelCompare`, and `parallelPick` in `MannostreeOrchestrator`.
+  - Add `pr()`, `issue()`, `task()`, and `handoff()` methods to `MannostreeOrchestrator`.
 - **CLI Commands**:
-  - `mannostree parallel spawn <feature> -n <count> [--base-branch <base>] [--profile <name>] [--plan-mode shared|isolated] [--dry-run]`
-  - `mannostree parallel compare <feature> [--json] [--yaml]`
-  - `mannostree parallel pick <feature> --winner <id_or_index> [--cleanup-losers] [--archive-losers] [--reason <text>] [--dry-run]`
+  - `mannostree pr <id> [--draft] [--title <text>] [--body-file <path>] [--push] [--dry-run]`
+  - `mannostree issue <id> [--from-issue <num>] [--title <text>] [--dry-run]`
+  - `mannostree task <id> [--validate] [--summary]`
+  - `mannostree handoff <id> [--to <name>] [--notes <text>]`
 - **Testing & Documentation**:
-  - Unit tests for parallel engine and CLI integration tests.
+  - Unit tests for PR body compilation, issue linking, task artifact validation, and handoff generation.
+  - CLI integration tests for all 4 commands.
 
 ---
 
 ## Detailed Specifications
 
-### 1. `parallel spawn <feature> -n <count>`
-- Feature name validated and sanitized.
-- Count validated (1 <= count <= `config.parallel.max_variants`).
-- Base branch explicitly resolved.
-- For each variant $i \in [1..count]$:
-  - id: `experiment-<feature>-v<i>`
-  - branch: `experiment/<feature>-v<i>`
-  - path: `.worktrees/<feature>-v<i>`
-  - scaffolds `.task/` and `RESULTS.md`.
-- Persists `.mannostree/experiments/<feature>.json`.
+### 1. `pr <id> [--draft] [--title <text>] [--body-file <path>] [--push] [--dry-run]`
+- Finds worktree record.
+- Reads `task-contract.md`, `RESULTS.md`, `quality-gates.md`, `review.md`.
+- Assembles PR markdown body and saves to `.task/pr-body.md`.
+- If `push`: pushes branch to remote and invokes `gh pr create` if available.
+- If `prepare-only` (default): outputs PR body and manual instructions.
+- Updates metadata: `publish.pr_number`, `publish.pr_url`, `publish.published_at`, `lifecycle_state: 'PR_OPEN'`.
 
-### 2. `parallel compare <feature>`
-- Loads `.mannostree/experiments/<feature>.json`.
-- For each variant worktree:
-  - Fetches ahead/behind count vs base.
-  - Fetches diff shortstat (files changed, insertions, deletions).
-  - Inspects validation and review status.
-  - Formats into structured comparison table / JSON envelope.
+### 2. `issue <id> [--from-issue <num>] [--title <text>]`
+- Links issue number and title to worktree record (`task.issue_number`, `task.issue_title`, `task.source_type: 'issue'`).
+- Updates `.task/task-contract.md` header with issue reference.
 
-### 3. `parallel pick <feature> --winner <id_or_index>`
-- Matches winner by full ID (`experiment-<feature>-v1`) or short index (`v1` or `1`).
-- Sets `winner: true` on winner worktree record.
-- Sets `winner: <winner_id>`, `selected_at: <ISO8601>`, `selection_reason` on experiment record.
-- If `--cleanup-losers` AND `--yes`: Drops non-winning variant worktrees.
-- Enforces strict no-auto-merge policy.
+### 3. `task <id> [--validate] [--summary]`
+- Audits `.task/` artifacts.
+- Checks presence and contents of:
+  - `task-contract.md`
+  - `implementation-plan.md`
+  - `quality-gates.md`
+  - `review.md`
+  - `RESULTS.md`
+- Returns completeness score (0-100%) and missing artifacts list.
+
+### 4. `handoff <id> [--to <name>] [--notes <text>]`
+- Serializes complete snapshot: worktree record, branch, base branch, head commit, diff stats, validation status, reviewer notes, and next recommended actions.
 
 ---
 
@@ -56,8 +56,9 @@ Deliver Phase 4 Parallel Variant Workflows for **Mannostree**:
 
 | Requirement | Implementation Component | Test Suite |
 |-------------|--------------------------|------------|
-| Multi-variant spawn & experiment record | `ParallelEngine.spawnVariants`, `orchestrator.parallelSpawn` | `tests/unit/parallel.test.ts` |
-| Side-by-side comparison & metrics | `ParallelEngine.compareVariants`, `orchestrator.parallelCompare` | `tests/unit/parallel.test.ts` |
-| Explicit winner selection & no-auto-merge | `ParallelEngine.pickWinner`, `orchestrator.parallelPick` | `tests/unit/parallel.test.ts` |
-| CLI `parallel` command tree | `src/cli/commands/parallel.ts` | `tests/integration/phase4.test.ts` |
-| Backward compatibility | All prior modules | All test suites |
+| Artifact PR compilation & prepare-only mode | `PublishEngine.publishPr`, `orchestrator.pr` | `tests/unit/publish.test.ts` |
+| Issue linking & task contract update | `TaskEngine.linkIssue`, `orchestrator.issue` | `tests/unit/task.test.ts` |
+| Task artifact validation | `TaskEngine.validateArtifacts`, `orchestrator.task` | `tests/unit/task.test.ts` |
+| Agent/human handoff summary | `TaskEngine.generateHandoff`, `orchestrator.handoff` | `tests/unit/task.test.ts` |
+| CLI commands & dry-run | `src/cli/commands/pr.ts`, `issue.ts`, `task.ts`, `handoff.ts` | `tests/integration/phase5.test.ts` |
+| Full backward compatibility | All prior modules | All test suites |

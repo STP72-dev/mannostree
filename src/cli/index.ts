@@ -14,6 +14,10 @@ import { registerSetupCommand } from './commands/setup.js';
 import { registerEnvCommand } from './commands/env.js';
 import { registerExecCommand } from './commands/exec.js';
 import { registerParallelCommand } from './commands/parallel.js';
+import { registerPrCommand } from './commands/pr.js';
+import { registerIssueCommand } from './commands/issue.js';
+import { registerTaskCommand } from './commands/task.js';
+import { registerHandoffCommand } from './commands/handoff.js';
 import { ExitCode, GlobalOptions, MannostreeError } from '../types/index.js';
 
 export function createProgram(): Command {
@@ -54,6 +58,12 @@ export function createProgram(): Command {
 
   // Phase 4 commands
   registerParallelCommand(program);
+
+  // Phase 5 commands
+  registerPrCommand(program);
+  registerIssueCommand(program);
+  registerTaskCommand(program);
+  registerHandoffCommand(program);
 
   return program;
 }

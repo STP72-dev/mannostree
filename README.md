@@ -10,6 +10,7 @@ Developer workspace lifecycle manager — git worktrees for parallel task execut
 - **Operational Safety & Diagnostics**: Real-time status reporting, safe base synchronization with automatic conflict abort, comprehensive system diagnostics (`doctor`), safe bulk cleanup, and targeted recovery.
 - **Project-Aware Setup & Profiles**: Automated dependency bootstrapping (`setup`), explicit environment file policy management (`env`), and in-worktree command execution (`exec`).
 - **Parallel Variant Workflows**: First-class multi-hypothesis branching (`parallel spawn`), side-by-side metric comparisons (`parallel compare`), and explicit winner selection (`parallel pick`) with strict no-auto-merge and no-auto-delete invariants.
+- **Artifacts, Publishing, & Handoffs**: Auto-compiled pull request documentation from durable `.task/` markdown files (`pr`), GitHub issue linking (`issue`), artifact completeness auditing (`task`), and successor agent handoffs (`handoff`).
 - **Atomic Metadata Registry**: Versioned, split metadata architecture (`.mannostree/registry.json` + `.mannostree/worktrees/<id>.json` + `.mannostree/experiments/<feature>.json`) with atomic write-temp-and-rename guarantees.
 - **Config-Driven Policies**: Centralized repository policies defined in `.mannostree.yml`.
 - **Artifact-First Workflow**: Automatic scaffolding of `.task/` contract and verification files (`task-contract.md`, `solution-options.md`, `implementation-plan.md`, `quality-gates.md`, `review.md`, and `RESULTS.md`).
@@ -74,6 +75,12 @@ parallel:
   require_shared_base: true
   require_same_profile: true
   default_plan_mode: shared
+
+publish:
+  default_remote: origin
+  default_draft: true
+  push_on_pr_create: false
+  pr_body_source: artifacts
 
 cleanup:
   default_dry_run: true
@@ -254,6 +261,38 @@ mannostree parallel pick auth-spike --winner v1 --reason "Superior query perform
 
 # Select winner and clean losers with explicit confirmation
 mannostree parallel pick auth-spike --winner v1 --cleanup-losers --yes
+```
+
+---
+
+### Artifacts, Publishing, & Ecosystem Integration (Phase 5)
+
+#### 16. Prepare or Publish Pull Requests (`pr`)
+Compile PR descriptions from `.task/` markdown files and optionally publish to GitHub:
+```bash
+# Compile and save PR description locally (prepare-only)
+mannostree pr feature-my-feature
+
+# Push branch and create PR via GitHub CLI
+mannostree pr feature-my-feature --push
+```
+
+#### 17. Link GitHub Issue (`issue`)
+Associate an existing GitHub issue with a worktree workspace:
+```bash
+mannostree issue feature-my-feature --from-issue 42 --title "Refactor authentication flow"
+```
+
+#### 18. Audit Task Artifacts (`task`)
+Verify completeness and validity of required durable `.task/` artifacts:
+```bash
+mannostree task feature-my-feature --validate
+```
+
+#### 19. Generate Workspace Handoff (`handoff`)
+Export comprehensive handoff packages for successor agents or human reviewers:
+```bash
+mannostree handoff feature-my-feature --to "Senior Reviewer" --notes "All unit and integration tests passing."
 ```
 
 ---

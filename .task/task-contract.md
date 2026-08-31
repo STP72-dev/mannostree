@@ -1,49 +1,39 @@
-# Task Contract: Phase 4 Parallel Variant Workflows
+# Task Contract: Phase 5 Artifacts, Publishing, & Ecosystem Integration
 
 ## Problem
-Complex features, architectural spikes, and AI agent experiments often benefit from exploring multiple implementation hypotheses in parallel (e.g. comparing different algorithms, libraries, or prompting strategies). Mannostree must support first-class parallel variant generation, side-by-side comparison, and explicit winner selection without risking accidental auto-merges or silent deletion of losing worktrees.
+After implementing and validating changes in an isolated worktree, developers and autonomous AI agents need dependable tools to summarize task results, assemble clean pull request documentation from durable `.task/` artifacts, link GitHub issues, and generate handoff packages for successor agents or human reviewers.
 
 ## Scope
-Deliver Phase 4 Parallel Variant Workflows while preserving 100% backward compatibility with Phases 1, 2, and 3:
-1. **`parallel spawn <feature> -n <count> [--base-branch <base>] [--profile <name>] [--plan-mode shared|isolated] [--dry-run]`**:
-   - Spawns N isolated variant worktrees: `.worktrees/<feature>-v1`, `.worktrees/<feature>-v2`, ... `.worktrees/<feature>-vN`.
-   - Branch naming policy: `experiment/<feature>-v1`, `experiment/<feature>-v2`, ... `experiment/<feature>-vN`.
-   - All variants share the exact same explicit base branch.
-   - Creates and updates `.mannostree/experiments/<feature>.json`.
-   - Sets `parallel` metadata on each worktree record (`experiment_name`, `winner: false`, `selected: false`).
+Deliver Phase 5 Artifacts, Publishing, & Ecosystem Integration while preserving 100% backward compatibility across Phases 1, 2, 3, and 4:
+1. **`pr <id> [--draft] [--title <text>] [--body-file <path>] [--push] [--dry-run]`**:
+   - Generates PR body by aggregating `.task/task-contract.md`, `RESULTS.md`, `.task/quality-gates.md`, and `.task/review.md`.
+   - Default mode is `prepare-only`: generates PR body locally (saved to `.task/pr-body.md` and returned in output envelope).
+   - If `--push` is passed, executes git push and optionally invokes `gh pr create` when available.
+   - Updates metadata (`publish.pr_number`, `publish.pr_url`, `publish.published_at`, `lifecycle_state: 'PR_OPEN'`).
    - Supports `--dry-run` preview.
-2. **`parallel compare <feature> [--metrics] [--json] [--yaml]`**:
-   - Generates tabular and structured comparisons across all variants in the experiment group.
-   - Compares: branch ahead/behind count, lines added/removed, files changed, test validation status, and lifecycle state.
-   - Read-only; never mutates git or disk.
-3. **`parallel pick <feature> --winner <variant_id_or_index> [--cleanup-losers] [--archive-losers] [--reason <text>] [--dry-run]`**:
-   - Explicit winner selection:
-     - Sets `winner: true` and `selected: true` on the winning worktree record.
-     - Updates `.mannostree/experiments/<feature>.json` with `winner`, `selected_at`, `selection_reason`.
-   - **Hard Rule**: NO AUTO-MERGE. Selection does not merge the branch into base.
-   - **Hard Rule**: NO AUTO-DELETE of losers unless `--cleanup-losers` AND `--yes` are explicitly passed.
-   - Supports `--dry-run` preview.
-4. **Metadata Store & Schema**:
-   - Add `ExperimentRecordSchema` and `saveExperiment`, `getExperiment`, `listExperiments` in `MetadataStore`.
-   - Atomic persistence in `.mannostree/experiments/<feature>.json`.
+2. **`issue <id> [--from-issue <num>] [--title <text>] [--dry-run]`**:
+   - Links worktree to an issue; updates `.task/task-contract.md` and metadata (`task.issue_number`, `task.issue_title`, `task.source_type`).
+3. **`task <id> [--validate] [--summary]`**:
+   - Inspects durable `.task/` artifacts, validates completeness of required files, and computes task status summary.
+4. **`handoff <id> [--to <name>] [--notes <text>]`**:
+   - Prepares an agent/human handoff summary containing current worktree record, git status, ahead/behind counts, diff summary, and pending review recommendations.
 5. **Testing & Documentation**:
-   - Unit tests for parallel spawn, compare metrics, and winner selection.
-   - Integration tests for CLI `parallel` subcommands.
+   - Unit tests for PR body generation, issue linking, task artifact validation, and handoff package generation.
+   - Integration tests for all Phase 5 CLI commands.
    - Update README and durable task artifacts.
 
 ## Out-of-Scope
-- Phase 5 GitHub publish flow and PR creation.
-- Auto-merge into main/base branch.
-- Silent deletion of non-selected variants.
+- Auto-merging pull requests.
+- Unsolicited background remote git pushes.
 
 ## Acceptance Criteria
-- [ ] **Phase 1, 2 & 3 Compatibility**: All 43 existing unit and integration tests continue to pass.
-- [ ] **`parallel spawn`**: Spawns N variants from shared explicit base branch; follows strict naming `experiment/<feature>-vN` and `.worktrees/<feature>-vN`; saves experiment record; supports dry-run.
-- [ ] **`parallel compare`**: Compares all variants with git diff metrics and lifecycle states; supports table, JSON, and YAML formats.
-- [ ] **`parallel pick`**: Explicitly selects winner; records in experiment and worktree metadata; enforces no-auto-merge invariant; preserves losers unless explicitly commanded with `--cleanup-losers --yes`.
-- [ ] **Test Coverage**: 100% passing tests across unit and integration suites.
+- [ ] **Compatibility**: All 48 existing unit and integration tests continue to pass.
+- [ ] **`pr`**: Generates structured PR body from artifacts; operates in `prepare-only` by default; updates publish metadata; supports `--push` and `--dry-run`.
+- [ ] **`issue`**: Links issue metadata and updates task contract file.
+- [ ] **`task`**: Validates artifact files and quality gates.
+- [ ] **`handoff`**: Outputs complete handoff bundle for successor agents.
+- [ ] **Test Coverage**: 100% passing tests across all test suites.
 
 ## Explicit Assumptions
 - Base branch: `main`.
-- Publishing mode: `prepare-only`.
-- Parallel variants permission: Allowed under `parallel` command suite.
+- Publishing mode: `prepare-only` by default.

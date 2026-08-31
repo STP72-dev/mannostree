@@ -14,6 +14,8 @@ import {
   ParallelPickOptions,
   ParallelPickResult,
 } from './parallel.js';
+import { PublishEngine, PrOptions, PrResult } from './publish.js';
+import { TaskEngine, TaskValidationResult, HandoffReport } from './task.js';
 import {
   CommandOutput,
   ExitCode,
@@ -102,6 +104,8 @@ export class MannostreeOrchestrator {
   public doctorEngine: DoctorEngine;
   public setupEngine: SetupEngine;
   public parallelEngine: ParallelEngine;
+  public publishEngine: PublishEngine;
+  public taskEngine: TaskEngine;
 
   constructor(
     public repoRoot: string,
@@ -119,6 +123,8 @@ export class MannostreeOrchestrator {
       this.spawn.bind(this),
       this.drop.bind(this)
     );
+    this.publishEngine = new PublishEngine(repoRoot, config, this.git);
+    this.taskEngine = new TaskEngine(repoRoot, config, this.git);
   }
 
   public getProfile(name: string = 'default'): ProfileConfig {
@@ -1014,5 +1020,158 @@ export class MannostreeOrchestrator {
       errors: [],
     };
   }
+
+  public async pr(
+    id: string,
+    options: PrOptions = {}
+  ): Promise<CommandOutput<PrResult & { id: string }>> {
+    const record = await this.store.getWorktree(id);
+    if (!record) {
+      throw new MannostreeError(
+        `Worktree '${id}' not found in metadata registry.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    const fullPath = path.resolve(this.repoRoot, record.worktree_path);
+    const prRes = await this.publishEngine.publishPr(fullPath, record, options);
+
+    if (!options.dryRun) {
+      const now = new Date().toISOString();
+      record.last_activity_at = now;
+      record.publish = {
+        pushed: prRes.mode === 'published',
+        pr_number: prRes.pr_number ?? null,
+        pr_url: prRes.pr_url ?? null,
+        published_at: prRes.mode === 'published' ? now : null,
+      };
+      if (prRes.mode === 'published') {
+        record.lifecycle_state = 'PR_OPEN';
+        record.status = 'pr_open';
+      }
+      await this.store.saveWorktree(record);
+    }
+
+    return {
+      command: 'pr',
+      ok: true,
+      dry_run: !!options.dryRun,
+      result: {
+        ...prRes,
+        id,
+      },
+      warnings: prRes.mode === 'prepare-only'
+        ? [prRes.instructions || 'PR prepared locally in prepare-only mode.']
+        : [],
+      errors: [],
+    };
+  }
+
+  public async issue(
+    id: string,
+    options: { issue: number; title?: string; dryRun?: boolean }
+  ): Promise<CommandOutput<{ id: string; issue_number: number; issue_title?: string }>> {
+    const record = await this.store.getWorktree(id);
+    if (!record) {
+      throw new MannostreeError(
+        `Worktree '${id}' not found in metadata registry.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    const fullPath = path.resolve(this.repoRoot, record.worktree_path);
+    const linkRes = await this.taskEngine.linkIssue(
+      fullPath,
+      record,
+      options.issue,
+      options.title,
+      options.dryRun
+    );
+
+    if (!options.dryRun) {
+      record.last_activity_at = new Date().toISOString();
+      record.task = {
+        ...(record.task || {}),
+        source_type: 'issue',
+        issue_number: linkRes.issue_number,
+        issue_title: linkRes.issue_title,
+      };
+      await this.store.saveWorktree(record);
+    }
+
+    return {
+      command: 'issue',
+      ok: true,
+      dry_run: !!options.dryRun,
+      result: {
+        id,
+        issue_number: linkRes.issue_number,
+        issue_title: linkRes.issue_title,
+      },
+      warnings: [],
+      errors: [],
+    };
+  }
+
+  public async task(
+    id: string,
+    options: { validate?: boolean; summary?: boolean } = {}
+  ): Promise<CommandOutput<TaskValidationResult & { id: string }>> {
+    const record = await this.store.getWorktree(id);
+    if (!record) {
+      throw new MannostreeError(
+        `Worktree '${id}' not found in metadata registry.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    const fullPath = path.resolve(this.repoRoot, record.worktree_path);
+    const validation = this.taskEngine.validateArtifacts(fullPath);
+
+    return {
+      command: 'task',
+      ok: validation.complete,
+      dry_run: false,
+      result: {
+        ...validation,
+        id,
+      },
+      warnings: !validation.complete
+        ? [`Task artifacts incomplete (${validation.total_present}/${validation.total_required} present, score: ${validation.score_percentage}%).`]
+        : [],
+      errors: [],
+    };
+  }
+
+  public async handoff(
+    id: string,
+    options: { to?: string; notes?: string } = {}
+  ): Promise<CommandOutput<HandoffReport>> {
+    const record = await this.store.getWorktree(id);
+    if (!record) {
+      throw new MannostreeError(
+        `Worktree '${id}' not found in metadata registry.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    const fullPath = path.resolve(this.repoRoot, record.worktree_path);
+    const report = await this.taskEngine.generateHandoff(
+      fullPath,
+      record,
+      options.to,
+      options.notes
+    );
+
+    return {
+      command: 'handoff',
+      ok: true,
+      dry_run: false,
+      result: report,
+      warnings: [],
+      errors: [],
+    };
+  }
 }
+
 

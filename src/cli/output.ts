@@ -4,6 +4,8 @@ import { CommandOutput, GlobalOptions, WorktreeRecord, ExperimentRecord } from '
 import { DoctorReport } from '../core/doctor.js';
 import { SetupApplyResult, EnvApplyResult } from '../core/setup.js';
 import { ParallelComparisonReport, ParallelPickResult } from '../core/parallel.js';
+import { PrResult } from '../core/publish.js';
+import { TaskValidationResult, HandoffReport } from '../core/task.js';
 
 export function formatOutput<T>(
   output: CommandOutput<T>,
@@ -330,6 +332,98 @@ export function formatParallelPickResult(
     lines.push(chalk.dim(`Cleaned ${result.cleaned_losers.length} losing variant(s): ${result.cleaned_losers.join(', ')}`));
   } else {
     lines.push(chalk.dim('Losing variants were preserved on disk and in git.'));
+  }
+
+  return lines.join('\n');
+}
+
+export function formatPrResult(
+  result: PrResult & { id: string },
+  dryRun: boolean
+): string {
+  const lines: string[] = [
+    dryRun
+      ? chalk.yellow(`Plan: would prepare PR for '${result.id}'`)
+      : result.mode === 'published'
+        ? chalk.green(`✔ Pull request opened for '${result.id}': ${result.pr_url || ''}`)
+        : chalk.green(`✔ Pull request body prepared for '${result.id}'`),
+    `  ${chalk.dim('Title:')}     ${result.title}`,
+    `  ${chalk.dim('Body File:')} ${result.body_file}`,
+  ];
+
+  if (result.instructions) {
+    lines.push(`  ${chalk.dim('Status:')}    ${result.instructions}`);
+  }
+
+  return lines.join('\n');
+}
+
+export function formatIssueResult(
+  result: { id: string; issue_number: number; issue_title?: string },
+  dryRun: boolean
+): string {
+  return [
+    dryRun
+      ? chalk.yellow(`Plan: would link issue #${result.issue_number} to '${result.id}'`)
+      : chalk.green(`✔ Linked issue #${result.issue_number} (${result.issue_title || ''}) to '${result.id}'`),
+  ].join('\n');
+}
+
+export function formatTaskResult(
+  result: TaskValidationResult & { id: string }
+): string {
+  const lines: string[] = [
+    chalk.bold.cyan(`📋 Task Artifact Validation: ${result.id}`),
+    `  ${chalk.dim('Status:')}        ${result.complete ? chalk.green('COMPLETE') : chalk.yellow('INCOMPLETE')}`,
+    `  ${chalk.dim('Score:')}         ${result.score_percentage}% (${result.total_present}/${result.total_required} present)`,
+    '',
+    chalk.bold('Required Artifacts:'),
+  ];
+
+  for (const [key, item] of Object.entries(result.artifacts)) {
+    const mark = item.present ? chalk.green('✔') : chalk.red('✖');
+    lines.push(`  ${mark} ${key}: ${chalk.dim(item.rel_path)} (${item.size_bytes} bytes)`);
+  }
+
+  return lines.join('\n');
+}
+
+export function formatHandoffResult(
+  report: HandoffReport
+): string {
+  const lines: string[] = [
+    chalk.bold.cyan(`🤝 Workspace Handoff Report: ${report.id}`),
+    `  ${chalk.dim('Feature:')}         ${report.feature_name || report.id}`,
+    `  ${chalk.dim('Branch:')}          ${chalk.green(report.branch)}`,
+    `  ${chalk.dim('Base Branch:')}     ${chalk.yellow(report.base_branch)}`,
+    `  ${chalk.dim('Lifecycle State:')} ${chalk.magenta(report.lifecycle_state)}`,
+  ];
+
+  if (report.target_recipient) {
+    lines.push(`  ${chalk.dim('To Recipient:')}    ${chalk.bold(report.target_recipient)}`);
+  }
+
+  lines.push(
+    chalk.bold('\nGit & Workspace State:'),
+    `  ${chalk.dim('Ahead / Behind:')}  +${report.git_summary.ahead_count} / -${report.git_summary.behind_count}`,
+    `  ${chalk.dim('Dirty:')}           ${report.git_summary.dirty ? chalk.red('yes') : chalk.green('no')}`,
+    `  ${chalk.dim('Head Commit:')}     ${report.git_summary.head_commit || 'unknown'}`
+  );
+
+  lines.push(
+    chalk.bold('\nArtifacts Completeness:'),
+    `  ${chalk.dim('Complete:')}        ${report.artifacts_status.complete ? chalk.green('yes') : chalk.yellow('no')} (${report.artifacts_status.score_percentage}%)`
+  );
+
+  if (report.handoff_notes) {
+    lines.push(chalk.bold('\nHandoff Notes:'), `  ${report.handoff_notes}`);
+  }
+
+  if (report.next_steps.length > 0) {
+    lines.push(chalk.bold('\nRecommended Next Steps:'));
+    for (const step of report.next_steps) {
+      lines.push(`  - ${step}`);
+    }
   }
 
   return lines.join('\n');

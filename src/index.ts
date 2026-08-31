@@ -9,6 +9,8 @@ export * from './artifact/scaffold.js';
 export * from './core/doctor.js';
 export * from './core/setup.js';
 export * from './core/parallel.js';
+export * from './core/publish.js';
+export * from './core/task.js';
 export * from './core/orchestrator.js';
 export * from './cli/output.js';
 export * from './cli/index.js';

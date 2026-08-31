@@ -1,62 +1,69 @@
-# Execution Results: Phase 4 Parallel Variant Workflows
+# Execution Results: Phase 5 Artifacts, Publishing, & Ecosystem Integration
 
 ## Summary
-Successfully implemented Phase 4 Parallel Variant Workflows for **Mannostree**, preserving 100% backward compatibility across all previous phases:
-- **`parallel spawn <feature> -n <count> [--base-branch <base>] [--profile <name>] [--plan-mode shared|isolated] [--dry-run]`**:
-  - Spawns N parallel variant worktrees (`.worktrees/<feature>-v1`, `.worktrees/<feature>-v2`, ... `.worktrees/<feature>-vN`) and branches (`experiment/<feature>-v1`, etc.) from an identical explicit base branch.
-  - Automatically persists experiment group records in `.mannostree/experiments/<feature>.json`.
-  - Sets `parallel` metadata on each worktree record (`experiment_name`, `winner: false`, `selected: false`).
-- **`parallel compare <feature> [--json] [--yaml]`**:
-  - Compares all variants side-by-side with ahead/behind commit distances, diff statistics (files changed, lines added/removed), validation statuses, review states, and lifecycle stages.
-  - Purely read-only; never mutates git or disk.
-- **`parallel pick <feature> --winner <id_or_index> [--cleanup-losers] [--archive-losers] [--reason <text>] [--dry-run]`**:
-  - Explicitly marks winning variant in worktree and experiment metadata.
-  - **Enforces Hard Invariant**: NO AUTO-MERGE into base branch.
-  - **Enforces Hard Invariant**: NO AUTO-DELETE of losing variants unless explicitly requested with `--cleanup-losers --yes`.
-- **Automated Test Suite**: 48/48 tests passing across 17 test suites (10 unit + 7 integration suites).
+Successfully implemented Phase 5 Artifacts, Publishing, & Ecosystem Integration for **Mannostree**, delivering all planned features across the 5-phase roadmap with 100% backward compatibility:
+- **`pr <id> [--draft] [--title <text>] [--body-file <path>] [--push] [--dry-run]`**:
+  - Deterministically compiles PR body markdown from `.task/` and `RESULTS.md`.
+  - Operates in `prepare-only` mode by default, storing output in `.task/pr-body.md` without unexpected remote calls.
+  - Supports `--push` for remote git push and GitHub CLI (`gh pr create`) integration.
+  - Updates worktree metadata (`publish.pr_number`, `publish.pr_url`, `publish.published_at`, `lifecycle_state: 'PR_OPEN'`).
+- **`issue <id> [--from-issue <num>] [--title <text>] [--dry-run]`**:
+  - Associates GitHub issues with worktree workspaces and stamps `.task/task-contract.md`.
+- **`task <id> [--validate] [--summary]`**:
+  - Audits durable task artifacts and calculates completeness score (0..100%).
+- **`handoff <id> [--to <name>] [--notes <text>]`**:
+  - Produces structured workspace handoff reports for successor AI agents or human reviewers.
+- **Automated Test Suite**: 54/54 tests passing across 20 test suites (12 unit + 8 integration suites).
 
 ## Files Changed / Added
-- `src/metadata/schema.ts`: Added `ExperimentRecordSchema`.
-- `src/types/index.ts`: Added `ExperimentRecord` interface.
-- `src/metadata/store.ts`: Added `saveExperiment`, `getExperiment`, `listExperiments`, `deleteExperiment`.
-- `src/git/engine.ts`: Added `getDiffShortStat()` to calculate diff additions/deletions/files.
-- `src/core/parallel.ts`: Added `ParallelEngine` managing variant spawn, comparison, and winner selection.
-- `src/core/orchestrator.ts`: Added `parallelSpawn`, `parallelCompare`, `parallelPick`.
-- `src/cli/output.ts`: Added formatters `formatParallelSpawnResult`, `formatParallelCompareResult`, `formatParallelPickResult`.
-- `src/cli/commands/parallel.ts`: Added `parallel spawn`, `parallel compare`, and `parallel pick` CLI commands.
-- `src/cli/index.ts`: Registered `parallel` command suite.
-- `src/index.ts`: Exported `ParallelEngine` and types.
-- `tests/unit/parallel.test.ts`: Unit tests for parallel variant spawning, diff comparison, and winner selection.
-- `tests/integration/phase4.test.ts`: End-to-end integration tests for `parallel` CLI commands.
+- `src/core/publish.ts`: Added `PublishEngine` for artifact-driven PR compilation and GitHub publishing.
+- `src/core/task.ts`: Added `TaskEngine` for artifact validation, issue linking, and handoff generation.
+- `src/core/orchestrator.ts`: Added `pr`, `issue`, `task`, `handoff` methods.
+- `src/cli/output.ts`: Added formatters `formatPrResult`, `formatIssueResult`, `formatTaskResult`, `formatHandoffResult`.
+- `src/cli/commands/pr.ts`: CLI PR command.
+- `src/cli/commands/issue.ts`: CLI issue command.
+- `src/cli/commands/task.ts`: CLI task command.
+- `src/cli/commands/handoff.ts`: CLI handoff command.
+- `src/cli/index.ts`: Registered Phase 5 commands.
+- `src/index.ts`: Exported `PublishEngine`, `TaskEngine`, and related types.
+- `tests/unit/publish.test.ts`: Unit tests for PR compilation and prepare-only execution.
+- `tests/unit/task.test.ts`: Unit tests for task validation, issue linking, and handoff generation.
+- `tests/integration/phase5.test.ts`: End-to-end integration tests for Phase 5 CLI commands.
 
 ## Test Evidence
 - `npm run lint`: **Passed** (0 type errors).
 - `npm run build`: **Passed** (Clean compilation to `dist/`).
-- `npm test -- --run`: **Passed** (48/48 tests passing in 1.05s).
+- `npm test -- --run`: **Passed** (54/54 tests passing in 1.11s).
 
 ```text
- ✓ tests/unit/artifact.test.ts (2 tests)
- ✓ tests/unit/metadata.test.ts (3 tests)
  ✓ tests/unit/config.test.ts (4 tests)
+ ✓ tests/unit/metadata.test.ts (3 tests)
  ✓ tests/unit/base-resolver.test.ts (4 tests)
  ✓ tests/unit/recover.test.ts (2 tests)
- ✓ tests/unit/clean.test.ts (2 tests)
+ ✓ tests/unit/publish.test.ts (2 tests)
+ ✓ tests/unit/task.test.ts (3 tests)
  ✓ tests/unit/doctor.test.ts (3 tests)
  ✓ tests/unit/setup.test.ts (3 tests)
- ✓ tests/unit/env.test.ts (4 tests)
+ ✓ tests/unit/clean.test.ts (2 tests)
+ ✓ tests/unit/artifact.test.ts (2 tests)
  ✓ tests/integration/cli.test.ts (3 tests)
- ✓ tests/unit/exec.test.ts (3 tests)
+ ✓ tests/unit/env.test.ts (4 tests)
  ✓ tests/unit/sync.test.ts (3 tests)
- ✓ tests/unit/parallel.test.ts (4 tests)
+ ✓ tests/unit/exec.test.ts (3 tests)
  ✓ tests/integration/phase4.test.ts (1 test)
+ ✓ tests/unit/parallel.test.ts (4 tests)
  ✓ tests/integration/phase3.test.ts (1 test)
+ ✓ tests/integration/phase5.test.ts (1 test)
  ✓ tests/integration/bin.test.ts (3 tests)
  ✓ tests/integration/phase2.test.ts (3 tests)
 
- Test Files  17 passed (17)
-      Tests  48 passed (48)
+ Test Files  20 passed (20)
+      Tests  54 passed (54)
 ```
 
-## Trade-offs
-- Comparing diff metrics utilizes `git diff --shortstat` against base merge-base commit for high performance and low overhead.
-- Winner selection intentionally leaves merging and PR creation to subsequent explicit publish commands (Phase 5).
+## Complete Project Roadmap Status
+- **Phase 1: Foundation & Core Lifecycle (`spawn`, `list`, `info`, `drop`)**: Delivered & Verified
+- **Phase 2: Operational Safety & Diagnostics (`status`, `sync`, `doctor`, `clean`, `recover`)**: Delivered & Verified
+- **Phase 3: Project-Aware Setup & Profiles (`setup`, `env`, `exec`)**: Delivered & Verified
+- **Phase 4: Parallel Variant Workflows (`parallel spawn`, `parallel compare`, `parallel pick`)**: Delivered & Verified
+- **Phase 5: Artifacts, Publishing, & Ecosystem Integration (`pr`, `issue`, `task`, `handoff`)**: Delivered & Verified
