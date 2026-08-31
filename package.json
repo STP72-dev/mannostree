@@ -21,7 +21,11 @@
     "cli",
     "agents"
   ],
-  "author": "Ludman Solutions",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/STP72-dev/mannostree.git"
+  },
+  "author": "STP72-dev",
   "license": "MIT",
   "dependencies": {
     "chalk": "^5.4.1",
