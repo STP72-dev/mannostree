@@ -1,85 +1,66 @@
-# Solution Options: Phase 2 Operational Safety & Diagnostics
+# Solution Options: Phase 3 Project-Aware Setup & Profiles
 
-## Option 1: Integrated Orchestrator with Dedicated Engine Extensions (Recommended)
+## Option 1: Integrated Setup Engine with Profile Schema & Direct Execution (Recommended)
 
 ### Architecture & Module Boundaries
-- Extends existing Phase 1 modules without breaking contracts:
-  - `src/git/engine.ts`: Add `getAheadBehindCount`, `isBranchMerged`, `syncWorktree` (with automatic abort on conflict), `repairWorktree`, `listPorcelainWorktrees`.
-  - `src/core/doctor.ts`: Dedicated diagnostic analyzer evaluating registry vs disk, git refs, untracked directories, and schema health.
-  - `src/core/orchestrator.ts`: Implement `status`, `sync`, `doctor`, `clean`, and `recover`.
-  - `src/cli/commands/`: Add `status.ts`, `sync.ts`, `doctor.ts`, `clean.ts`, `recover.ts`.
+- `src/config/schema.ts`: Expand `ProfileConfigSchema` to include `env_vars: z.record(z.string()).default({})` and `generate_command: z.string().optional()`.
+- `src/core/setup.ts`: Implement `SetupEngine` with:
+  - `applyProfile(worktreePath, profile, options)`: Runs install and validation commands.
+  - `applyEnvPolicy(worktreePath, profile, mode, fromPath, options)`: Handles copy, link, skip, generate.
+  - `execCommand(worktreePath, commandArgs, profile, options)`: Runs arbitrary commands in worktree with env injection and exit code forwarding.
+- `src/core/orchestrator.ts`: Integrate `SetupEngine` into `spawn`, `setup`, `env`, and `exec`.
+- `src/cli/commands/`: Add `setup.ts`, `env.ts`, `exec.ts`.
 
 ### State Transitions & Metadata Impact
-- `status`: Enriches `git_state` and returns live status without mutating metadata files on disk unless `--fetch` refreshes refs.
-- `sync`: Updates worktree `git_state` and `last_activity_at` upon successful rebase/merge.
-- `doctor`: Read-only. `--fix` updates registry/worktree records according to confirmed repair actions.
-- `clean`: Transitions removed worktrees to `CLEANED` / archived metadata.
-- `recover`: Transitions unrecoverable or damaged worktrees to `BROKEN` if repair fails, or updates metadata upon successful repair.
+- Updates `setup` block in `worktree.json`: `setup_mode`, `env_mode`, `install_ran`, `install_succeeded`, `setup_commands`.
+- Transitions `lifecycle_state` to `CONTEXT_PACKED` on success, or `BROKEN` on install/validation failure.
 
-### Dry-Run & Confirmation Behavior
-- All state-mutating commands (`sync`, `clean`, `recover`, `doctor --fix`) implement full `--dry-run` plans.
-- `clean` defaults to dry-run reporting unless an explicit filter AND `--yes` are provided.
-- `doctor --fix` requires explicit `--yes` for state mutations.
+### Dry-Run & Error Handling
+- Full dry-run preview across `setup` and `env`.
+- Uses `ExitCode.SETUP_ENV_ERROR` (5) on install or env copy failure.
+- `exec` forwards the executed process's exact exit code directly.
 
-### Error & Exit-Code Behavior
-- `ExitCode.USAGE_ERROR` (2): Missing required options, invalid flags.
-- `ExitCode.VALIDATION_FAILURE` (3): Missing filters on destructive clean, schema violations.
-- `ExitCode.GIT_ERROR` (4): Git command failure, sync conflict (with aborted state).
-- `ExitCode.METADATA_INCONSISTENCY` (6): Doctor reports critical metadata corruption.
-- `ExitCode.RECOVERABLE_BROKEN_STATE` (20): Doctor or recover encounters repairable broken state.
+### Tests
+- Unit tests for env copy, link, skip, generate; install commands execution; validation failures.
+- Integration tests for CLI `setup`, `env`, `exec`.
 
-### Test Strategy
-- Unit tests for git engine sync rollback, merge detection, ahead/behind calculation.
-- Unit tests for doctor diagnostic rules across mock inconsistencies.
-- Integration tests for end-to-end `status`, `sync` with conflicts, `clean` filters, `doctor --fix`, and `recover` repair flows in temp git repos.
-
-### Failure, Recovery, Scope & Reversibility
-- If sync encounters conflict, it immediately aborts (`git rebase --abort` / `git merge --abort`) and reports conflict files safely.
-- Clean and recover never touch untracked worktrees or the main workspace.
-- Minimal blast radius; 100% backward compatible with Phase 1.
+### Scope & Reversibility
+- Minimal changes, clean modular design, 100% backward compatible.
 
 ---
 
-## Option 2: Standalone Sub-Engine per Command Family
+## Option 2: External Task Runners & Shell Templates
 
 ### Architecture & Module Boundaries
-- Creates separate isolated sub-packages (`src/status/`, `src/sync/`, `src/doctor/`, `src/clean/`, `src/recover/`), each instantiating their own Git and Metadata handles.
+- Delegates setup to external tool managers (Makefiles, npm scripts, shell wrappers) without unified Mannostree profile definitions.
 
 ### State Transitions & Metadata Impact
-- Duplicates git status and metadata querying across sub-engines.
+- Weak lifecycle tracking; metadata cannot reliably capture command outcomes.
 
-### Dry-Run & Confirmation Behavior
-- Implements dry-run independently in each sub-engine.
+### Dry-Run & Error Handling
+- Difficult to provide dry-run previews of multi-step external shell scripts.
 
-### Error & Exit-Code Behavior
-- Uses standard exit codes, but potential inconsistencies across sub-packages.
+### Tests
+- Brittle environment-dependent test harness.
 
-### Test Strategy
-- Tests written per sub-package.
-
-### Failure, Recovery, Scope & Reversibility
-- Higher risk of state drift due to duplicated orchestrator logic.
-- More boilerplate, heavier refactoring of Phase 1 orchestrator boundaries.
+### Scope & Reversibility
+- High risk of platform incompatibility and violates ADR-001.
 
 ---
 
-## Option 3: External Script Execution with CLI Shell Facade
+## Option 3: Monolithic Orchestrator with Inline Subprocesses
 
 ### Architecture & Module Boundaries
-- Implements shell scripts (`scripts/sync.sh`, `scripts/doctor.sh`, `scripts/clean.sh`) invoked via child processes from Node.
+- Implements all setup, env copying, and exec execution directly inside `MannostreeOrchestrator` methods without a dedicated `SetupEngine`.
 
 ### State Transitions & Metadata Impact
-- State transitions managed across process boundaries.
+- Bloats orchestrator class and mixes low-level file I/O with lifecycle orchestration.
 
-### Dry-Run & Confirmation Behavior
-- Hard to enforce deterministic dry-run previews in shell scripts.
+### Dry-Run & Error Handling
+- Tightly couples dry-run logic with CLI output formatting.
 
-### Error & Exit-Code Behavior
-- Fragile exit code parsing.
+### Tests
+- Harder to unit test env and setup logic in isolation.
 
-### Test Strategy
-- Requires testing bash scripts across environments.
-
-### Failure, Recovery, Scope & Reversibility
-- Disqualified by ADR-001 (Mannostree is the single lifecycle layer; no external shell scripts).
-- High risk of data loss on cleanup/sync.
+### Scope & Reversibility
+- Less maintainable for Phase 4+ extensions.

@@ -1,11 +1,12 @@
 import path from 'node:path';
 import fs from 'node:fs';
-import { MannostreeConfig } from '../config/schema.js';
+import { MannostreeConfig, ProfileConfig } from '../config/schema.js';
 import { GitEngine } from '../git/engine.js';
 import { MetadataStore } from '../metadata/store.js';
 import { resolveBaseBranch } from '../git/base-resolver.js';
 import { scaffoldArtifacts } from '../artifact/scaffold.js';
 import { DoctorEngine, DoctorReport, ProposedRepair } from './doctor.js';
+import { SetupEngine, SetupApplyResult, EnvApplyResult } from './setup.js';
 import {
   CommandOutput,
   ExitCode,
@@ -71,10 +72,27 @@ export interface RecoverOptions {
   dryRun?: boolean;
 }
 
+export interface SetupOptions {
+  profile?: string;
+  reinstall?: boolean;
+  dryRun?: boolean;
+}
+
+export interface EnvOptions {
+  mode?: 'copy' | 'link' | 'skip' | 'generate';
+  from?: string;
+  dryRun?: boolean;
+}
+
+export interface ExecOptions {
+  inheritStdio?: boolean;
+}
+
 export class MannostreeOrchestrator {
   public git: GitEngine;
   public store: MetadataStore;
   public doctorEngine: DoctorEngine;
+  public setupEngine: SetupEngine;
 
   constructor(
     public repoRoot: string,
@@ -83,6 +101,20 @@ export class MannostreeOrchestrator {
     this.git = new GitEngine(repoRoot);
     this.store = new MetadataStore(repoRoot, config);
     this.doctorEngine = new DoctorEngine(repoRoot, config, this.git, this.store);
+    this.setupEngine = new SetupEngine(repoRoot);
+  }
+
+  public getProfile(name: string = 'default'): ProfileConfig {
+    return (
+      this.config.profiles[name] ||
+      this.config.profiles.default || {
+        install_commands: [],
+        env_mode: 'skip',
+        env_files: [],
+        env_vars: {},
+        validation_commands: [],
+      }
+    );
   }
 
   public async spawn(options: SpawnOptions): Promise<CommandOutput<WorktreeRecord>> {
@@ -161,6 +193,27 @@ export class MannostreeOrchestrator {
       dryRun,
     });
 
+    // Apply setup & env profile
+    const profile = this.getProfile(profileName);
+    let installRan = false;
+    let installSucceeded = true;
+    let setupCommands: string[] = [];
+    let initialLifecycle: LifecycleState = 'CONTEXT_PACKED';
+
+    if (!noSetup && !dryRun) {
+      const setupRes = await this.setupEngine.applyProfile(fullWorktreePath, profile, { dryRun });
+      installRan = setupRes.install_ran;
+      installSucceeded = setupRes.install_succeeded && setupRes.validation_passed;
+      setupCommands = setupRes.commands_executed;
+
+      if (!installSucceeded) {
+        initialLifecycle = 'BROKEN';
+        warnings.push(...setupRes.errors);
+      }
+
+      await this.setupEngine.applyEnvPolicy(fullWorktreePath, profile, env, undefined, { dryRun });
+    }
+
     const now = new Date().toISOString();
     const worktreeRecord: WorktreeRecord = {
       version: 1,
@@ -181,8 +234,8 @@ export class MannostreeOrchestrator {
       last_activity_at: now,
       created_by: 'mannostree spawn',
       profile: profileName,
-      status: 'created',
-      lifecycle_state: 'CONTEXT_PACKED' as LifecycleState,
+      status: installSucceeded ? 'created' : 'broken',
+      lifecycle_state: initialLifecycle,
       task: {
         source_type: 'manual',
         task_contract_file: path.join(
@@ -206,8 +259,9 @@ export class MannostreeOrchestrator {
       setup: {
         setup_mode: profileName,
         env_mode: env,
-        install_ran: !noSetup,
-        install_succeeded: !noSetup,
+        install_ran: installRan,
+        install_succeeded: installSucceeded,
+        setup_commands: setupCommands,
       },
       git_state: {
         dirty: false,
@@ -221,7 +275,7 @@ export class MannostreeOrchestrator {
         branch_exists: true,
         metadata_consistent: true,
         last_health_check_at: now,
-        health_status: 'ok',
+        health_status: installSucceeded ? 'ok' : 'degraded',
       },
       tags: [kind, sanitizedName],
     };
@@ -421,6 +475,124 @@ export class MannostreeOrchestrator {
       warnings: [],
       errors: [],
     };
+  }
+
+  public async setup(
+    id: string,
+    options: SetupOptions = {}
+  ): Promise<CommandOutput<SetupApplyResult & { id: string; profile: string }>> {
+    const { profile: profileOverride, reinstall = false, dryRun = false } = options;
+
+    const record = await this.store.getWorktree(id);
+    if (!record) {
+      throw new MannostreeError(
+        `Worktree '${id}' not found in metadata registry.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    const targetProfileName = profileOverride || record.profile || 'default';
+    const profile = this.getProfile(targetProfileName);
+    const fullPath = path.resolve(this.repoRoot, record.worktree_path);
+
+    const setupResult = await this.setupEngine.applyProfile(fullPath, profile, {
+      reinstall,
+      dryRun,
+    });
+
+    if (!dryRun) {
+      record.profile = targetProfileName;
+      record.last_activity_at = new Date().toISOString();
+      record.setup = {
+        ...(record.setup || {}),
+        setup_mode: targetProfileName,
+        install_ran: setupResult.install_ran,
+        install_succeeded: setupResult.install_succeeded && setupResult.validation_passed,
+        setup_commands: setupResult.commands_executed,
+      };
+
+      if (!setupResult.install_succeeded || !setupResult.validation_passed) {
+        record.lifecycle_state = 'BROKEN';
+        record.status = 'broken';
+      }
+
+      await this.store.saveWorktree(record);
+    }
+
+    return {
+      command: 'setup',
+      ok: setupResult.install_succeeded && setupResult.validation_passed,
+      dry_run: dryRun,
+      result: {
+        ...setupResult,
+        id,
+        profile: targetProfileName,
+      },
+      warnings: [],
+      errors: setupResult.errors,
+    };
+  }
+
+  public async env(
+    id: string,
+    options: EnvOptions = {}
+  ): Promise<CommandOutput<EnvApplyResult & { id: string }>> {
+    const { mode, from, dryRun = false } = options;
+
+    const record = await this.store.getWorktree(id);
+    if (!record) {
+      throw new MannostreeError(
+        `Worktree '${id}' not found in metadata registry.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    const profile = this.getProfile(record.profile);
+    const fullPath = path.resolve(this.repoRoot, record.worktree_path);
+
+    const envResult = await this.setupEngine.applyEnvPolicy(fullPath, profile, mode, from, {
+      dryRun,
+    });
+
+    if (!dryRun) {
+      record.last_activity_at = new Date().toISOString();
+      record.setup = {
+        ...(record.setup || {}),
+        env_mode: envResult.mode,
+      };
+      await this.store.saveWorktree(record);
+    }
+
+    return {
+      command: 'env',
+      ok: true,
+      dry_run: dryRun,
+      result: {
+        ...envResult,
+        id,
+      },
+      warnings: [],
+      errors: [],
+    };
+  }
+
+  public async exec(
+    id: string,
+    commandArgs: string[],
+    options: ExecOptions = {}
+  ): Promise<{ exitCode: number; stdout?: string; stderr?: string }> {
+    const record = await this.store.getWorktree(id);
+    if (!record) {
+      throw new MannostreeError(
+        `Worktree '${id}' not found in metadata registry.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    const profile = this.getProfile(record.profile);
+    const fullPath = path.resolve(this.repoRoot, record.worktree_path);
+
+    return this.setupEngine.execInWorktree(fullPath, commandArgs, profile, options);
   }
 
   public async doctor(

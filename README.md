@@ -8,6 +8,7 @@ Developer workspace lifecycle manager — git worktrees for parallel task execut
 
 - **Safe Worktree Lifecycle**: Explicit base branch resolution and isolated branch/worktree creation.
 - **Operational Safety & Diagnostics**: Real-time status reporting, safe base synchronization with automatic conflict abort, comprehensive system diagnostics (`doctor`), safe bulk cleanup, and targeted recovery.
+- **Project-Aware Setup & Profiles**: Automated dependency bootstrapping (`setup`), explicit environment file policy management (`env`), and in-worktree command execution (`exec`).
 - **Atomic Metadata Registry**: Versioned, split metadata architecture (`.mannostree/registry.json` + `.mannostree/worktrees/<id>.json`) with atomic write-temp-and-rename guarantees.
 - **Config-Driven Policies**: Centralized repository policies defined in `.mannostree.yml`.
 - **Artifact-First Workflow**: Automatic scaffolding of `.task/` contract and verification files (`task-contract.md`, `solution-options.md`, `implementation-plan.md`, `quality-gates.md`, `review.md`, and `RESULTS.md`).
@@ -60,6 +61,10 @@ profiles:
     install_commands:
       - npm ci
     env_mode: skip
+    env_files:
+      - .env
+    env_vars:
+      NODE_ENV: development
     validation_commands:
       - npm test
 
@@ -168,6 +173,46 @@ mannostree recover feature-my-feature --rebuild-metadata --yes
 
 # Reattach missing worktree directory
 mannostree recover feature-my-feature --reattach-worktree --yes
+```
+
+---
+
+### Project-Aware Setup & Profiles (Phase 3)
+
+#### 10. Workspace Setup (`setup`)
+Apply or re-apply profile installation and validation commands to a worktree:
+```bash
+# Run profile setup commands
+mannostree setup feature-my-feature
+
+# Apply a specific named profile
+mannostree setup feature-my-feature --profile node
+
+# Re-run install commands even if previously executed
+mannostree setup feature-my-feature --reinstall
+```
+
+#### 11. Environment Configuration (`env`)
+Manage environment files (`.env`) safely with explicit policies:
+```bash
+# Copy env files from repo root
+mannostree env feature-my-feature --mode copy
+
+# Symlink env files
+mannostree env feature-my-feature --mode link
+
+# Run profile generate command
+mannostree env feature-my-feature --mode generate
+```
+
+#### 12. Execute Commands in Worktree (`exec`)
+Run commands directly inside a worktree's isolated directory with injected profile environment variables:
+```bash
+# Run tests inside worktree
+mannostree exec feature-my-feature -- npm test
+
+# Run arbitrary command
+mannostree exec feature-my-feature -- git log -n 5
 ```
 
 ---

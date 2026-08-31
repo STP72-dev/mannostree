@@ -2,6 +2,7 @@ import YAML from 'yaml';
 import chalk from 'chalk';
 import { CommandOutput, GlobalOptions, WorktreeRecord } from '../types/index.js';
 import { DoctorReport } from '../core/doctor.js';
+import { SetupApplyResult, EnvApplyResult } from '../core/setup.js';
 
 export function formatOutput<T>(
   output: CommandOutput<T>,
@@ -214,5 +215,44 @@ export function formatRecoverResult(
       ? chalk.yellow(`Plan: would run recovery action '${result.action}' on '${result.id}'`)
       : chalk.green(`✔ Recovery action '${result.action}' completed for '${result.id}'`),
     `  ${chalk.dim('Details:')} ${result.details}`,
+  ].join('\n');
+}
+
+export function formatSetupResult(
+  result: SetupApplyResult & { id: string; profile: string },
+  dryRun: boolean
+): string {
+  const lines: string[] = [
+    dryRun
+      ? chalk.yellow(`Plan: would apply setup profile '${result.profile}' to worktree '${result.id}'`)
+      : result.install_succeeded && result.validation_passed
+        ? chalk.green(`✔ Setup profile '${result.profile}' applied successfully to '${result.id}'`)
+        : chalk.red(`✖ Setup profile '${result.profile}' failed for '${result.id}'`),
+    `  ${chalk.dim('Commands planned/run:')} ${result.commands_executed.length}`,
+  ];
+
+  for (const cmd of result.commands_executed) {
+    lines.push(`    - ${chalk.dim(cmd)}`);
+  }
+
+  if (result.errors.length > 0) {
+    lines.push(chalk.bold('\nErrors:'));
+    for (const err of result.errors) {
+      lines.push(`  ${chalk.red(err)}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+export function formatEnvResult(
+  result: EnvApplyResult & { id: string },
+  dryRun: boolean
+): string {
+  return [
+    dryRun
+      ? chalk.yellow(`Plan: would apply env policy mode '${result.mode}' to '${result.id}'`)
+      : chalk.green(`✔ Env policy mode '${result.mode}' applied to '${result.id}'`),
+    `  ${chalk.dim('Files handled:')} ${result.files_handled.length > 0 ? result.files_handled.join(', ') : 'none'}`,
   ].join('\n');
 }

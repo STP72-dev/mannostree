@@ -1,63 +1,57 @@
-# Task Contract: Phase 2 Operational Safety & Diagnostics
+# Task Contract: Phase 3 Project-Aware Setup & Profiles
 
 ## Problem
-Phase 1 established the foundation for single-path workspace spawning, listing, inspecting, and dropping. However, day-to-day parallel development requires robust operational safety: inspecting live git and lifecycle status, syncing workspaces with their base branches safely, diagnosing metadata-disk-git divergence, safely cleaning up merged/stale worktrees, and recovering damaged worktrees without data loss.
+Developers and autonomous worker agents working inside isolated worktrees need dependable, profile-driven environment initialization (e.g. running `npm ci`, setting up Python venvs, managing `.env` files safely without silent secret leakage, and executing commands directly within a worktree's isolated directory).
 
 ## Scope
-Deliver Phase 2 commands and engine capabilities while preserving 100% backward compatibility with Phase 1:
-1. **`status <id> [--fetch]`**:
-   - Read-only inspection (unless `--fetch` is explicitly requested to refresh remote refs).
-   - Computes and displays live git state (ahead/behind counts vs base branch, dirty/untracked/conflicts, head commit) and lifecycle state + validation/review status.
-2. **`sync <id> [--strategy rebase|merge|ff-only] [--fetch] [--dry-run]`**:
-   - Refuses if worktree has uncommitted or untracked changes.
-   - Fetches base branch if `--fetch` is set (or configured default).
-   - Previews rebase/merge/ff-only actions under `--dry-run`.
-   - Executes rebase/merge/ff-only safely; on conflict, aborts and restores cleanly, surfacing conflict files with exit code 4 without leaving unrecoverable state.
-3. **`doctor [--json] [--fix]`**:
-   - Read-only diagnostic report by default.
-   - Audits all registry records against disk paths and git branches.
-   - Audits metadata schema validity and identifies corruption/version drift.
-   - Detects untracked worktrees located under `worktree_root` (does NOT touch them).
-   - Detects orphan branches (branches with prefix `feature/` or `fix/` that have no worktree).
-   - `--fix` generates an explicit repair plan and requires confirmation (`--yes`) for any destructive action.
-4. **`clean [--merged] [--stale-days N] [--state S] [--dry-run] [--yes]`**:
-   - Candidate-report / dry-run by default; lists candidate worktrees before taking action.
-   - Non-dry destructive execution strictly requires an explicit filter (`--merged`, `--stale-days`, or `--state`) AND `--yes`.
-   - Strictly protects the main working tree, dirty worktrees, unmerged worktrees (unless `--force`), and winning variants.
-   - Strictly leaves untracked worktrees untouched.
-5. **`recover <id> [--rebuild-metadata] [--reattach-worktree] [--reattach-branch] [--dry-run]`**:
-   - Narrowly scoped, explicit repair proposal.
-   - Requires one explicit repair action flag.
-   - Previews proposed repair in `--dry-run`.
-   - Preserves state and transitions to `BROKEN` if repair cannot be proven correct.
-6. **Documentation & Tests**:
-   - Full unit and integration test coverage for all new commands and error paths.
-   - Complete documentation update across README, CLI spec, and lifecycle guides.
+Deliver Phase 3 Setup Engine and Profile Management while preserving 100% backward compatibility with Phase 1 and Phase 2:
+1. **Profile Engine & Configuration**:
+   - Support named profiles in `.mannostree.yml` (`install_commands`, `env_mode`, `env_files`, `validation_commands`, `env_vars`, `generate_command`).
+   - Integrate setup execution into `spawn` when `--no-setup` is not passed.
+2. **`setup <id> [--profile <name>] [--reinstall] [--dry-run]`**:
+   - Re-applies setup profile to an existing worktree.
+   - Runs `install_commands` and `validation_commands` in worktree directory.
+   - Updates worktree metadata (`setup.install_ran`, `setup.install_succeeded`, `setup.setup_mode`, `setup.setup_commands`).
+   - If setup validation fails, updates status and transitions lifecycle state to `BROKEN` with diagnostic notes.
+   - Supports `--dry-run` preview.
+3. **`env <id> [--mode copy|link|skip|generate] [--from <path>] [--dry-run]`**:
+   - Manages environment configuration files with strict explicit opt-in policy:
+     - `copy`: Copies listed `env_files` from `--from` (default repo root) to worktree root.
+     - `link`: Symlinks listed `env_files` from `--from` (default repo root) to worktree root.
+     - `skip`: Does nothing.
+     - `generate`: Runs profile's `generate_command` in worktree directory.
+   - Refuses `copy` or `link` if source env file does not exist.
+   - Updates metadata (`setup.env_mode`).
+   - Supports `--dry-run` preview.
+4. **`exec <id> -- <command...>`**:
+   - Executes arbitrary command string or arguments directly inside `<worktree_path>`.
+   - Injects profile-defined environment variables (`env_vars`).
+   - Streams stdout/stderr and preserves the exact exit code of the executed child process.
+5. **Documentation & Testing**:
+   - Unit tests for setup profile execution, env file copy/link/generate, and exec command forwarding.
+   - Integration tests for end-to-end CLI commands.
+   - Update README and CLI documentation.
 
 ## Out-of-Scope
-- Phase 3 setup profile script execution and environment copy/link/generate policies.
 - Phase 4 multi-variant parallel execution (`parallel spawn`, `parallel compare`, `parallel pick`).
 - Phase 5 GitHub publish flow and PR creation.
-- Automatic merges or silent/unconfirmed destructive cleanups.
+- Automatic secret guessing or silent `.env` file copying.
 
 ## Acceptance Criteria
-- [ ] **Phase 1 Compatibility**: All Phase 1 commands (`spawn`, `list`, `info`, `drop`) and existing test suites continue to pass without regression.
-- [ ] **`status`**: Displays exact ahead/behind vs base branch, dirty/untracked/conflict state, and lifecycle metadata. Does not write to disk or git unless `--fetch` is passed.
-- [ ] **`sync`**: Refuses dirty worktrees with exit code 2/4; supports `rebase`, `merge`, `ff-only`; `--dry-run` shows exact planned git steps; aborts cleanly on conflict.
-- [ ] **`doctor`**: Detects missing directories, orphan branches, schema errors, and untracked worktree directories. `--fix` generates explicit actions and requires `--yes`.
-- [ ] **`clean`**: Reports candidates by default; refuses to mutate without filter and `--yes`; never touches the main worktree or untracked directories.
-- [ ] **`recover`**: Proposes repairs, rebuilds metadata, reattaches worktrees/branches; sets `BROKEN` when invalid.
-- [ ] **Test Coverage**: 100% passing unit and integration tests across all Phase 2 features.
+- [ ] **Phase 1 & Phase 2 Compatibility**: All existing commands and tests continue to pass without regression.
+- [ ] **`setup`**: Executes profile install and validation commands; updates `setup` metadata; `--dry-run` previews actions without running commands.
+- [ ] **`env`**: Safely copies or symlinks listed env files; validates source file existence; supports `--dry-run`.
+- [ ] **`exec`**: Runs commands inside the worktree directory; injects environment variables; forwards exact process exit codes (e.g. exit code 0, 1, 42).
+- [ ] **Test Coverage**: 100% passing tests across unit and integration suites.
 
 ## References
 - `AGENTS.md`
 - `CLAUDE.md`
+- `docs/01-arch-design/config-design.md`
 - `docs/02-project-kickoff/cli-spec.md`
 - `docs/02-project-kickoff/worktree-lifecycle.md`
-- `docs/02-project-kickoff/metadata-schema.md`
-- `docs/02-project-kickoff/architecture.md`
 
 ## Explicit Assumptions
-- Base branch: `main` is the explicit base for the repository.
+- Base branch: `main`.
 - Publishing mode: `prepare-only`.
 - Parallel variants: `never`.

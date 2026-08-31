@@ -1,37 +1,34 @@
-# Pull Request: Mannostree Phase 2 Operational Safety & Diagnostics
+# Pull Request: Mannostree Phase 3 Project-Aware Setup & Profiles
 
 ## Summary
-Implements Phase 2 Operational Safety & Diagnostics for **Mannostree**, delivering `status`, `sync`, `doctor`, `clean`, and `recover` commands while preserving 100% backward compatibility with Phase 1.
+Implements Phase 3 Project-Aware Setup & Profiles for **Mannostree**, delivering `setup`, `env`, and `exec` commands while maintaining 100% backward compatibility with Phase 1 and Phase 2.
 
 ## Changes
-- **Git & Worktree Engine Extensions**:
-  - `getAheadBehindCount`: Fast, accurate commit counting vs base branch.
-  - `isBranchMerged`: Merge-base ancestry checking for branch lifecycle.
-  - `syncWorktree`: Safe rebase/merge with automated rollback (`git rebase --abort` / `git merge --abort`) on conflict.
-  - `listPorcelainWorktrees`, `repairWorktree`, `listLocalBranches`, `fetchAll`.
-- **Doctor Diagnostic Engine**:
-  - Added `src/core/doctor.ts` detecting missing directories, missing branches, schema inconsistencies, unindexed files, orphan branches, and untracked folders (strictly non-mutating).
+- **Configuration & Profiles**:
+  - Added `env_vars` (environment variable injection) and `generate_command` to `ProfileConfigSchema`.
+- **Setup Engine Subsystem**:
+  - Added `src/core/setup.ts` (`SetupEngine`) managing profile install and validation commands, explicit env file policies (`copy`, `link`, `skip`, `generate`), and in-worktree process execution.
 - **Core Orchestrator**:
-  - Implemented `status`, `sync`, `doctor`, `clean`, and `recover` methods in `src/core/orchestrator.ts`.
-- **CLI Commands & Output Formatters**:
-  - Added `status.ts`, `sync.ts`, `doctor.ts`, `clean.ts`, `recover.ts` to `src/cli/commands/`.
-  - Added formatters for diagnostics, cleanup summaries, and sync/recovery results in `src/cli/output.ts`.
-  - Updated CLI command tree in `src/cli/index.ts`.
+  - Implemented `setup`, `env`, and `exec` methods in `MannostreeOrchestrator`.
+  - Integrated automated setup and env bootstrap into `spawn` (bypassed with `--no-setup`).
+- **CLI Commands**:
+  - Added `setup.ts`, `env.ts`, and `exec.ts` to `src/cli/commands/`.
+  - Added output formatters for setup and env in `src/cli/output.ts`.
+  - Registered all Phase 3 commands in `src/cli/index.ts`.
 - **Automated Tests**:
-  - Added unit test suites (`tests/unit/sync.test.ts`, `tests/unit/doctor.test.ts`, `tests/unit/clean.test.ts`, `tests/unit/recover.test.ts`) and integration suite (`tests/integration/phase2.test.ts`).
-  - Total tests: 32/32 passed across 11 test suites.
+  - Added unit test suites (`tests/unit/setup.test.ts`, `tests/unit/env.test.ts`, `tests/unit/exec.test.ts`) and integration suite (`tests/integration/phase3.test.ts`).
+  - Total test suite: 43/43 tests passing across 15 suites.
 - **Documentation**:
   - Updated `README.md` and durable task artifacts.
 
 ## Validation
 - `npm run lint`: Passed (0 type errors).
 - `npm run build`: Passed (Clean compilation to `dist/`).
-- `npm test -- --run`: Passed (32/32 tests passed in 905ms).
+- `npm test -- --run`: Passed (43/43 tests passing in 1.01s).
 
 ## Review
 - Independent review verdict: **PASSED**.
-- All safety invariants verified (read-only diagnostics, sync conflict abort, multi-gate cleanup, untracked directory preservation).
+- All safety invariants verified (explicit env copying, validation failure transition to `BROKEN`, exit code forwarding, dry-run purity).
 
-## Safety & No-Auto-Merge Policy
-- **No Automatic Merge**: Manual inspection and explicit user commands required.
-- **Publishing Mode**: `prepare-only`.
+## Publishing Mode
+- **Mode**: `prepare-only`.

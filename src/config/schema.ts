@@ -4,6 +4,8 @@ export const ProfileConfigSchema = z.object({
   install_commands: z.array(z.string()).default([]),
   env_mode: z.enum(['copy', 'link', 'skip', 'generate']).default('skip'),
   env_files: z.array(z.string()).default([]),
+  env_vars: z.record(z.string()).default({}),
+  generate_command: z.string().optional(),
   validation_commands: z.array(z.string()).default([]),
 });
 

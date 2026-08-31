@@ -1,59 +1,58 @@
-# Execution Results: Phase 2 Operational Safety & Diagnostics
+# Execution Results: Phase 3 Project-Aware Setup & Profiles
 
 ## Summary
-Successfully implemented Phase 2 Operational Safety & Diagnostics for **Mannostree**, preserving 100% backward compatibility with all Phase 1 foundations:
-- **`status <id> [--fetch]`**: Implemented read-only status command computing real-time ahead/behind counts against explicit base branch, dirty/untracked/conflict state, head commit hash/subject, lifecycle state, and validation/review summaries.
-- **`sync <id> [--strategy rebase|merge|ff-only] [--fetch] [--dry-run]`**: Implemented safe synchronization against base branch. Automatically checks for dirty state before starting, previews actions in dry-run, executes sync, and automatically invokes `git rebase --abort` / `git merge --abort` on conflict, leaving the workspace in its clean state.
-- **`doctor [--json] [--fix] [--yes]`**: Implemented comprehensive system health diagnostics evaluating registry vs on-disk worktree presence, git branch existence, metadata schema validation, orphan branches, and untracked worktree directories. `--fix` creates concrete repair plans and requires `--yes` before applying changes.
-- **`clean [--merged] [--stale-days N] [--state S] [--dry-run] [--yes] [--force]`**: Implemented safe, candidate-reported bulk cleanup. Operates in dry-run candidate report mode by default; destructive execution requires an explicit filter and `--yes`. Protects main worktree, dirty worktrees, and winner variants; never mutates untracked folders.
-- **`recover <id> [--rebuild-metadata] [--reattach-worktree] [--reattach-branch] [--dry-run] [--yes]`**: Implemented targeted repair proposals with strict preview and confirmation gates.
-- **Automated Test Suite**: 32/32 tests passing across 11 test suites (6 unit + 5 integration suites).
+Successfully implemented Phase 3 Project-Aware Setup & Profiles for **Mannostree**, maintaining 100% backward compatibility with all Phase 1 and Phase 2 commands:
+- **`setup <id> [--profile <name>] [--reinstall] [--dry-run]`**: Applied profile-defined install and validation commands to isolated worktrees; recorded execution states in metadata (`setup.install_ran`, `setup.install_succeeded`, `setup.setup_commands`), safely transitioning lifecycle state to `BROKEN` on validation failure.
+- **`env <id> [--mode copy|link|skip|generate] [--from <path>] [--dry-run]`**: Applied explicit environment file policies (`copy`, `link`, `skip`, `generate`) with zero silent copying or secret leakage; validates source file presence and supports dry-run preview.
+- **`exec <id> -- <command...>`**: Executed arbitrary commands inside the worktree directory, injected profile-defined environment variables (`env_vars`), and directly forwarded child process exit codes (e.g. 0, 1, 42).
+- **Profile Integration in `spawn`**: Worktree creation automatically bootstraps setup and env policies unless `--no-setup` is passed.
+- **Automated Test Suite**: 43/43 tests passing across 15 test suites (9 unit + 6 integration suites).
 
 ## Files Changed / Added
-- `src/git/engine.ts`: Added `getAheadBehindCount`, `isBranchMerged`, `syncWorktree` (with automated rollback), `listPorcelainWorktrees`, `repairWorktree`, `listLocalBranches`, `fetchAll`.
-- `src/core/doctor.ts`: Added `DoctorEngine` for system health analysis and repair proposals.
-- `src/core/orchestrator.ts`: Added `status`, `sync`, `doctor`, `clean`, and `recover` methods.
-- `src/cli/output.ts`: Added formatters `formatDoctorReport`, `formatCleanReport`, `formatSyncResult`, `formatRecoverResult`.
-- `src/cli/commands/status.ts`: CLI status command.
-- `src/cli/commands/sync.ts`: CLI sync command.
-- `src/cli/commands/doctor.ts`: CLI doctor command.
-- `src/cli/commands/clean.ts`: CLI clean command.
-- `src/cli/commands/recover.ts`: CLI recover command.
-- `src/cli/index.ts`: Registered Phase 2 commands.
-- `src/index.ts`: Exported `DoctorEngine` and related types.
-- `tests/unit/sync.test.ts`: Unit tests for sync engine and rollback on conflict.
-- `tests/unit/doctor.test.ts`: Unit tests for doctor diagnostics and repairs.
-- `tests/unit/clean.test.ts`: Unit tests for clean candidate filtering and execution.
-- `tests/unit/recover.test.ts`: Unit tests for recover repair pathways.
-- `tests/integration/phase2.test.ts`: End-to-end integration tests for all 5 Phase 2 CLI commands.
+- `src/config/schema.ts`: Added `env_vars` and `generate_command` to `ProfileConfigSchema`.
+- `src/core/setup.ts`: Added `SetupEngine` with `applyProfile`, `applyEnvPolicy`, `execInWorktree`.
+- `src/core/orchestrator.ts`: Added `setup`, `env`, and `exec` methods and profile initialization in `spawn`.
+- `src/cli/output.ts`: Added formatters `formatSetupResult`, `formatEnvResult`.
+- `src/cli/commands/setup.ts`: Added CLI `setup` command.
+- `src/cli/commands/env.ts`: Added CLI `env` command.
+- `src/cli/commands/exec.ts`: Added CLI `exec` command.
+- `src/cli/index.ts`: Registered Phase 3 commands.
+- `src/index.ts`: Exported `SetupEngine` and types.
+- `tests/unit/setup.test.ts`: Unit tests for setup profile execution and validation failure handling.
+- `tests/unit/env.test.ts`: Unit tests for env file copy, link, skip, and generate modes.
+- `tests/unit/exec.test.ts`: Unit tests for command execution, env variable injection, and exit code forwarding.
+- `tests/integration/phase3.test.ts`: End-to-end integration tests for `setup`, `env`, and `exec` CLI commands.
 
 ## Test Evidence
 - `npm run lint`: **Passed** (0 type errors).
 - `npm run build`: **Passed** (Clean compilation to `dist/`).
-- `npm test -- --run`: **Passed** (32/32 tests passing in 905ms).
+- `npm test -- --run`: **Passed** (43/43 tests passing in 1.01s).
 
 ```text
  ✓ tests/unit/artifact.test.ts (2 tests)
  ✓ tests/unit/config.test.ts (4 tests)
  ✓ tests/unit/metadata.test.ts (3 tests)
- ✓ tests/unit/recover.test.ts (2 tests)
  ✓ tests/unit/base-resolver.test.ts (4 tests)
- ✓ tests/unit/doctor.test.ts (3 tests)
+ ✓ tests/unit/recover.test.ts (2 tests)
  ✓ tests/unit/clean.test.ts (2 tests)
+ ✓ tests/unit/doctor.test.ts (3 tests)
+ ✓ tests/unit/setup.test.ts (3 tests)
  ✓ tests/integration/cli.test.ts (3 tests)
+ ✓ tests/unit/env.test.ts (4 tests)
+ ✓ tests/unit/exec.test.ts (3 tests)
  ✓ tests/unit/sync.test.ts (3 tests)
+ ✓ tests/integration/phase3.test.ts (1 test)
  ✓ tests/integration/bin.test.ts (3 tests)
  ✓ tests/integration/phase2.test.ts (3 tests)
 
- Test Files  11 passed (11)
-      Tests  32 passed (32)
+ Test Files  15 passed (15)
+      Tests  43 passed (43)
 ```
 
 ## Trade-offs
-- Automated abort for sync conflicts guarantees that user workspaces are never left in a broken or ambiguous state, requiring manual conflict resolution only when explicitly chosen.
-- Bulk cleanup defaults to dry-run reporting unless an explicit filter AND `--yes` are provided to prevent accidental worktree deletions.
+- `exec` utilizes shell spawning with direct stdout/stderr streaming in interactive mode to guarantee full TTY and pipeline support.
+- Env file operations require explicit configuration to prevent unintended propagation of sensitive environment files.
 
 ## Risks & Known Limitations
-- Phase 3 will introduce setup profile script execution (`setup`, `env`, `exec`).
-- Phase 4 will introduce parallel experiment branching and comparisons.
-- Remote fetch in `status` and `sync` gracefully handles offline environments when no remote is reachable.
+- Phase 4 will introduce parallel experiment variants (`parallel spawn`, `parallel compare`, `parallel pick`).
+- Phase 5 will introduce GitHub publish flows and PR creation.

@@ -10,6 +10,9 @@ import { registerSyncCommand } from './commands/sync.js';
 import { registerDoctorCommand } from './commands/doctor.js';
 import { registerCleanCommand } from './commands/clean.js';
 import { registerRecoverCommand } from './commands/recover.js';
+import { registerSetupCommand } from './commands/setup.js';
+import { registerEnvCommand } from './commands/env.js';
+import { registerExecCommand } from './commands/exec.js';
 import { ExitCode, GlobalOptions, MannostreeError } from '../types/index.js';
 
 export function createProgram(): Command {
@@ -42,6 +45,11 @@ export function createProgram(): Command {
   registerDoctorCommand(program);
   registerCleanCommand(program);
   registerRecoverCommand(program);
+
+  // Phase 3 commands
+  registerSetupCommand(program);
+  registerEnvCommand(program);
+  registerExecCommand(program);
 
   return program;
 }
