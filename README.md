@@ -9,7 +9,8 @@ Developer workspace lifecycle manager — git worktrees for parallel task execut
 - **Safe Worktree Lifecycle**: Explicit base branch resolution and isolated branch/worktree creation.
 - **Operational Safety & Diagnostics**: Real-time status reporting, safe base synchronization with automatic conflict abort, comprehensive system diagnostics (`doctor`), safe bulk cleanup, and targeted recovery.
 - **Project-Aware Setup & Profiles**: Automated dependency bootstrapping (`setup`), explicit environment file policy management (`env`), and in-worktree command execution (`exec`).
-- **Atomic Metadata Registry**: Versioned, split metadata architecture (`.mannostree/registry.json` + `.mannostree/worktrees/<id>.json`) with atomic write-temp-and-rename guarantees.
+- **Parallel Variant Workflows**: First-class multi-hypothesis branching (`parallel spawn`), side-by-side metric comparisons (`parallel compare`), and explicit winner selection (`parallel pick`) with strict no-auto-merge and no-auto-delete invariants.
+- **Atomic Metadata Registry**: Versioned, split metadata architecture (`.mannostree/registry.json` + `.mannostree/worktrees/<id>.json` + `.mannostree/experiments/<feature>.json`) with atomic write-temp-and-rename guarantees.
 - **Config-Driven Policies**: Centralized repository policies defined in `.mannostree.yml`.
 - **Artifact-First Workflow**: Automatic scaffolding of `.task/` contract and verification files (`task-contract.md`, `solution-options.md`, `implementation-plan.md`, `quality-gates.md`, `review.md`, and `RESULTS.md`).
 - **Automation & CI Friendly**: Native `--json`, `--yaml`, `--plain`, and `--dry-run` support with structured output envelopes.
@@ -67,6 +68,12 @@ profiles:
       NODE_ENV: development
     validation_commands:
       - npm test
+
+parallel:
+  max_variants: 5
+  require_shared_base: true
+  require_same_profile: true
+  default_plan_mode: shared
 
 cleanup:
   default_dry_run: true
@@ -213,6 +220,40 @@ mannostree exec feature-my-feature -- npm test
 
 # Run arbitrary command
 mannostree exec feature-my-feature -- git log -n 5
+```
+
+---
+
+### Parallel Variant Workflows (Phase 4)
+
+#### 13. Spawn Parallel Variants (`parallel spawn`)
+Concurrently generate N variant worktrees and branches from a shared explicit base branch:
+```bash
+# Spawn 3 variant experiments
+mannostree parallel spawn auth-spike -n 3 -b main
+
+# Preview parallel spawn
+mannostree parallel spawn auth-spike -n 3 -b main --dry-run
+```
+
+#### 14. Compare Variants Side-by-Side (`parallel compare`)
+Inspect comparative ahead/behind counts, diff statistics (+/- lines, changed files), and validation outcomes:
+```bash
+# Tabular terminal comparison
+mannostree parallel compare auth-spike
+
+# Structured JSON comparison
+mannostree parallel compare auth-spike --json
+```
+
+#### 15. Pick Winner (`parallel pick`)
+Explicitly promote the winning variant in experiment metadata (never auto-merges or auto-deletes losers):
+```bash
+# Select variant 1 as winner
+mannostree parallel pick auth-spike --winner v1 --reason "Superior query performance"
+
+# Select winner and clean losers with explicit confirmation
+mannostree parallel pick auth-spike --winner v1 --cleanup-losers --yes
 ```
 
 ---

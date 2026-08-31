@@ -169,6 +169,22 @@ export interface RegistryRecord {
   experiments: string[];
 }
 
+export interface ExperimentRecord {
+  version: number;
+  feature: string;
+  base_branch: string;
+  profile: string;
+  created_at: string;
+  updated_at: string;
+  variants: string[];
+  winner?: string | null;
+  selected_at?: string | null;
+  selection_reason?: string | null;
+  status: 'active' | 'completed' | 'cleaned';
+  plan_mode: 'shared' | 'isolated';
+}
+
+
 export interface GlobalOptions {
   json?: boolean;
   yaml?: boolean;

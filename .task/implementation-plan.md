@@ -1,59 +1,54 @@
-# Implementation Plan: Phase 3 Project-Aware Setup & Profiles
+# Implementation Plan: Phase 4 Parallel Variant Workflows
 
 ## Overview
-Implement Phase 3 Project-Aware Setup & Profiles for **Mannostree**:
-- **Profile Configuration**: Support named profiles in `.mannostree.yml` with `install_commands`, `env_mode`, `env_files`, `validation_commands`, `env_vars`, and `generate_command`.
-- **Setup Engine (`src/core/setup.ts`)**:
-  - `applyProfile`: Runs install and validation commands in worktree directory.
-  - `applyEnvPolicy`: Handles `copy`, `link`, `skip`, and `generate` modes with strict file presence checks and dry-run preview.
-  - `execCommand`: Executes commands inside the worktree directory with environment variable injection and exit code forwarding.
+Deliver Phase 4 Parallel Variant Workflows for **Mannostree**:
+- **Experiment Schema & Persistence**:
+  - Add `ExperimentRecordSchema` in `src/metadata/schema.ts`.
+  - Add `saveExperiment`, `getExperiment`, `listExperiments`, `deleteExperiment` in `src/metadata/store.ts`.
+- **Git Engine Shortstat**:
+  - Add `getDiffShortStat` in `src/git/engine.ts`.
+- **Parallel Engine (`src/core/parallel.ts`)**:
+  - `spawnVariants`: Validates base branch, spawns N variant worktrees (`experiment/<feature>-v<N>`), scaffolds artifacts, and saves experiment record.
+  - `compareVariants`: Reads all variant records, computes live git state and diff stats, returning structured comparison data.
+  - `pickWinner`: Validates winner selection, updates worktree and experiment metadata, enforces NO AUTO-MERGE, and preserves losing variants unless `--cleanup-losers --yes` is supplied.
 - **Orchestrator Integration**:
-  - `setup(id, options)`: Re-applies profile to worktree and updates metadata.
-  - `env(id, options)`: Applies or updates env policy for worktree.
-  - `exec(id, commandArgs, options)`: Executes command in worktree directory and returns exact exit code.
-  - `spawn()`: Invokes setup engine automatically unless `--no-setup` is passed.
+  - Expose `parallelSpawn`, `parallelCompare`, and `parallelPick` in `MannostreeOrchestrator`.
 - **CLI Commands**:
-  - `mannostree setup <id> [--profile <name>] [--reinstall] [--dry-run]`
-  - `mannostree env <id> [--mode copy|link|skip|generate] [--from <path>] [--dry-run]`
-  - `mannostree exec <id> -- <command...>`
-- **Automated Tests & Documentation**:
-  - Unit and integration tests for setup, env, and exec workflows.
+  - `mannostree parallel spawn <feature> -n <count> [--base-branch <base>] [--profile <name>] [--plan-mode shared|isolated] [--dry-run]`
+  - `mannostree parallel compare <feature> [--json] [--yaml]`
+  - `mannostree parallel pick <feature> --winner <id_or_index> [--cleanup-losers] [--archive-losers] [--reason <text>] [--dry-run]`
+- **Testing & Documentation**:
+  - Unit tests for parallel engine and CLI integration tests.
 
 ---
 
 ## Detailed Specifications
 
-### 1. `setup <id> [--profile <name>] [--reinstall] [--dry-run]`
-- Finds worktree record by `<id>`.
-- Resolves profile from `--profile` flag or record's existing profile (defaulting to config default).
-- Previews commands in `--dry-run`.
-- Executes profile `install_commands` (unless already installed and `--reinstall` not specified) and `validation_commands`.
-- Updates worktree record: `setup.setup_mode`, `setup.install_ran`, `setup.install_succeeded`, `setup.setup_commands`, `last_activity_at`.
-- If a validation command fails, records status as failed and sets `lifecycle_state: 'BROKEN'`.
+### 1. `parallel spawn <feature> -n <count>`
+- Feature name validated and sanitized.
+- Count validated (1 <= count <= `config.parallel.max_variants`).
+- Base branch explicitly resolved.
+- For each variant $i \in [1..count]$:
+  - id: `experiment-<feature>-v<i>`
+  - branch: `experiment/<feature>-v<i>`
+  - path: `.worktrees/<feature>-v<i>`
+  - scaffolds `.task/` and `RESULTS.md`.
+- Persists `.mannostree/experiments/<feature>.json`.
 
-### 2. `env <id> [--mode copy|link|skip|generate] [--from <path>] [--dry-run]`
-- Resolves env mode (CLI flag `--mode` or profile default).
-- `copy`: For each file in `profile.env_files`, copies from `--from` (default `repo_root`) to worktree directory.
-- `link`: For each file in `profile.env_files`, creates symlink in worktree pointing to source.
-- `skip`: Does nothing.
-- `generate`: Executes `profile.generate_command` in worktree directory.
-- Refuses if source env file does not exist when in `copy` or `link` mode.
-- Updates metadata: `setup.env_mode`.
+### 2. `parallel compare <feature>`
+- Loads `.mannostree/experiments/<feature>.json`.
+- For each variant worktree:
+  - Fetches ahead/behind count vs base.
+  - Fetches diff shortstat (files changed, insertions, deletions).
+  - Inspects validation and review status.
+  - Formats into structured comparison table / JSON envelope.
 
-### 3. `exec <id> -- <command...>`
-- Resolves worktree directory from `<id>`.
-- Injects profile `env_vars` merged with `process.env`.
-- Spawns subprocess with `cwd: worktreeFullPath` and forwards stdout/stderr and exit code.
-
----
-
-## Risk Register & Test Plan
-
-| Risk | Mitigation |
-|------|------------|
-| Silent leakage or copying of production secrets | `env` requires explicit mode; never defaults to copying `.env` without configuration. |
-| Hanging child process during setup or exec | Capture subprocess errors cleanly; forward exit codes and signals. |
-| Incomplete setup leaves worktree in invalid state | Record failure in metadata and transition `lifecycle_state` to `BROKEN`. |
+### 3. `parallel pick <feature> --winner <id_or_index>`
+- Matches winner by full ID (`experiment-<feature>-v1`) or short index (`v1` or `1`).
+- Sets `winner: true` on winner worktree record.
+- Sets `winner: <winner_id>`, `selected_at: <ISO8601>`, `selection_reason` on experiment record.
+- If `--cleanup-losers` AND `--yes`: Drops non-winning variant worktrees.
+- Enforces strict no-auto-merge policy.
 
 ---
 
@@ -61,8 +56,8 @@ Implement Phase 3 Project-Aware Setup & Profiles for **Mannostree**:
 
 | Requirement | Implementation Component | Test Suite |
 |-------------|--------------------------|------------|
-| Profile install & validation commands | `SetupEngine.applyProfile`, `orchestrator.setup` | `tests/unit/setup.test.ts` |
-| Env policy copy/link/skip/generate | `SetupEngine.applyEnvPolicy`, `orchestrator.env` | `tests/unit/env.test.ts` |
-| Exec with env injection & exit code forwarding | `SetupEngine.execCommand`, `orchestrator.exec` | `tests/unit/exec.test.ts` |
-| CLI commands & dry-run | `src/cli/commands/setup.ts`, `env.ts`, `exec.ts` | `tests/integration/phase3.test.ts` |
-| Full Phase 1 & 2 regression safety | All prior modules | `tests/integration/cli.test.ts`, `tests/integration/phase2.test.ts` |
+| Multi-variant spawn & experiment record | `ParallelEngine.spawnVariants`, `orchestrator.parallelSpawn` | `tests/unit/parallel.test.ts` |
+| Side-by-side comparison & metrics | `ParallelEngine.compareVariants`, `orchestrator.parallelCompare` | `tests/unit/parallel.test.ts` |
+| Explicit winner selection & no-auto-merge | `ParallelEngine.pickWinner`, `orchestrator.parallelPick` | `tests/unit/parallel.test.ts` |
+| CLI `parallel` command tree | `src/cli/commands/parallel.ts` | `tests/integration/phase4.test.ts` |
+| Backward compatibility | All prior modules | All test suites |

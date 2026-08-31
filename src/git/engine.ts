@@ -145,6 +145,37 @@ export class GitEngine {
     }
   }
 
+  public async getDiffShortStat(
+    worktreePath: string,
+    baseBranch: string,
+    branch?: string
+  ): Promise<{ files_changed: number; insertions: number; deletions: number }> {
+    const fullPath = path.resolve(this.workingDir, worktreePath);
+    if (!fs.existsSync(fullPath)) {
+      return { files_changed: 0, insertions: 0, deletions: 0 };
+    }
+
+    try {
+      const targetRef = branch ? `${baseBranch}...${branch}` : `${baseBranch}...HEAD`;
+      const { stdout } = await this.exec(['diff', '--shortstat', targetRef], fullPath);
+      if (!stdout || stdout.trim().length === 0) {
+        return { files_changed: 0, insertions: 0, deletions: 0 };
+      }
+
+      const filesMatch = stdout.match(/(\d+)\s+files?\s+changed/);
+      const insertionsMatch = stdout.match(/(\d+)\s+insertions?\(\+\)/);
+      const deletionsMatch = stdout.match(/(\d+)\s+deletions?\(-\)/);
+
+      return {
+        files_changed: filesMatch ? parseInt(filesMatch[1], 10) : 0,
+        insertions: insertionsMatch ? parseInt(insertionsMatch[1], 10) : 0,
+        deletions: deletionsMatch ? parseInt(deletionsMatch[1], 10) : 0,
+      };
+    } catch {
+      return { files_changed: 0, insertions: 0, deletions: 0 };
+    }
+  }
+
   public async getGitState(
     worktreePath: string,
     baseBranch?: string,

@@ -1,34 +1,37 @@
-# Pull Request: Mannostree Phase 3 Project-Aware Setup & Profiles
+# Pull Request: Mannostree Phase 4 Parallel Variant Workflows
 
 ## Summary
-Implements Phase 3 Project-Aware Setup & Profiles for **Mannostree**, delivering `setup`, `env`, and `exec` commands while maintaining 100% backward compatibility with Phase 1 and Phase 2.
+Implements Phase 4 Parallel Variant Workflows for **Mannostree**, delivering `parallel spawn`, `parallel compare`, and `parallel pick` while maintaining 100% backward compatibility with Phases 1, 2, and 3.
 
 ## Changes
-- **Configuration & Profiles**:
-  - Added `env_vars` (environment variable injection) and `generate_command` to `ProfileConfigSchema`.
-- **Setup Engine Subsystem**:
-  - Added `src/core/setup.ts` (`SetupEngine`) managing profile install and validation commands, explicit env file policies (`copy`, `link`, `skip`, `generate`), and in-worktree process execution.
-- **Core Orchestrator**:
-  - Implemented `setup`, `env`, and `exec` methods in `MannostreeOrchestrator`.
-  - Integrated automated setup and env bootstrap into `spawn` (bypassed with `--no-setup`).
+- **Experiment Schema & Atomic Persistence**:
+  - Added `ExperimentRecordSchema` and `ExperimentRecord` types.
+  - Implemented `saveExperiment`, `getExperiment`, `listExperiments`, `deleteExperiment` in `MetadataStore`.
+- **Git Diff Engine**:
+  - Added `getDiffShortStat()` to calculate files changed, insertions, and deletions relative to base merge-base.
+- **Parallel Engine Subsystem**:
+  - Added `src/core/parallel.ts` (`ParallelEngine`) managing N-variant worktree generation (`experiment/<feature>-vN`), comparison report generation, and explicit winner promotion.
+- **Hard Project Invariants**:
+  - Enforced strict **NO AUTO-MERGE** rule on `parallel pick`.
+  - Enforced strict **NO AUTO-DELETE** rule: losing variants are preserved unless explicitly instructed via `--cleanup-losers` AND `--yes`.
 - **CLI Commands**:
-  - Added `setup.ts`, `env.ts`, and `exec.ts` to `src/cli/commands/`.
-  - Added output formatters for setup and env in `src/cli/output.ts`.
-  - Registered all Phase 3 commands in `src/cli/index.ts`.
+  - Added `src/cli/commands/parallel.ts` (`spawn`, `compare`, `pick`).
+  - Added formatters for variant comparison tables and pick summaries in `src/cli/output.ts`.
+  - Registered `parallel` command suite in `src/cli/index.ts`.
 - **Automated Tests**:
-  - Added unit test suites (`tests/unit/setup.test.ts`, `tests/unit/env.test.ts`, `tests/unit/exec.test.ts`) and integration suite (`tests/integration/phase3.test.ts`).
-  - Total test suite: 43/43 tests passing across 15 suites.
+  - Added unit test suite `tests/unit/parallel.test.ts` (4 tests) and integration suite `tests/integration/phase4.test.ts`.
+  - Total test suite: 48/48 tests passing across 17 suites.
 - **Documentation**:
   - Updated `README.md` and durable task artifacts.
 
 ## Validation
 - `npm run lint`: Passed (0 type errors).
 - `npm run build`: Passed (Clean compilation to `dist/`).
-- `npm test -- --run`: Passed (43/43 tests passing in 1.01s).
+- `npm test -- --run`: Passed (48/48 tests passing in 1.05s).
 
 ## Review
 - Independent review verdict: **PASSED**.
-- All safety invariants verified (explicit env copying, validation failure transition to `BROKEN`, exit code forwarding, dry-run purity).
+- All safety invariants verified (no auto-merge, no auto-delete, shared explicit base branch, dry-run purity).
 
 ## Publishing Mode
 - **Mode**: `prepare-only`.

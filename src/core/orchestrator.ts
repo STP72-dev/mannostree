@@ -8,8 +8,16 @@ import { scaffoldArtifacts } from '../artifact/scaffold.js';
 import { DoctorEngine, DoctorReport, ProposedRepair } from './doctor.js';
 import { SetupEngine, SetupApplyResult, EnvApplyResult } from './setup.js';
 import {
+  ParallelEngine,
+  ParallelSpawnOptions,
+  ParallelComparisonReport,
+  ParallelPickOptions,
+  ParallelPickResult,
+} from './parallel.js';
+import {
   CommandOutput,
   ExitCode,
+  ExperimentRecord,
   HealthMetadata,
   LifecycleState,
   MannostreeError,
@@ -93,6 +101,7 @@ export class MannostreeOrchestrator {
   public store: MetadataStore;
   public doctorEngine: DoctorEngine;
   public setupEngine: SetupEngine;
+  public parallelEngine: ParallelEngine;
 
   constructor(
     public repoRoot: string,
@@ -102,6 +111,14 @@ export class MannostreeOrchestrator {
     this.store = new MetadataStore(repoRoot, config);
     this.doctorEngine = new DoctorEngine(repoRoot, config, this.git, this.store);
     this.setupEngine = new SetupEngine(repoRoot);
+    this.parallelEngine = new ParallelEngine(
+      repoRoot,
+      config,
+      this.git,
+      this.store,
+      this.spawn.bind(this),
+      this.drop.bind(this)
+    );
   }
 
   public getProfile(name: string = 'default'): ProfileConfig {
@@ -946,4 +963,56 @@ export class MannostreeOrchestrator {
       errors: [],
     };
   }
+
+  public async parallelSpawn(
+    options: ParallelSpawnOptions
+  ): Promise<
+    CommandOutput<{
+      feature: string;
+      base_branch: string;
+      variants: WorktreeRecord[];
+      experiment: ExperimentRecord;
+    }>
+  > {
+    const res = await this.parallelEngine.spawnVariants(options);
+    return {
+      command: 'parallel spawn',
+      ok: true,
+      dry_run: !!options.dryRun,
+      result: res,
+      warnings: [],
+      errors: [],
+    };
+  }
+
+  public async parallelCompare(
+    feature: string
+  ): Promise<CommandOutput<ParallelComparisonReport>> {
+    const res = await this.parallelEngine.compareVariants(feature);
+    return {
+      command: 'parallel compare',
+      ok: true,
+      dry_run: false,
+      result: res,
+      warnings: [],
+      errors: [],
+    };
+  }
+
+  public async parallelPick(
+    options: ParallelPickOptions
+  ): Promise<CommandOutput<ParallelPickResult>> {
+    const res = await this.parallelEngine.pickWinner(options);
+    return {
+      command: 'parallel pick',
+      ok: true,
+      dry_run: !!options.dryRun,
+      result: res,
+      warnings: !options.yes && options.cleanupLosers
+        ? ['Cleanup losers preview only. Add --yes to delete non-winning variants.']
+        : [],
+      errors: [],
+    };
+  }
 }
+

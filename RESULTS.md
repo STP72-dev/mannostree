@@ -1,58 +1,62 @@
-# Execution Results: Phase 3 Project-Aware Setup & Profiles
+# Execution Results: Phase 4 Parallel Variant Workflows
 
 ## Summary
-Successfully implemented Phase 3 Project-Aware Setup & Profiles for **Mannostree**, maintaining 100% backward compatibility with all Phase 1 and Phase 2 commands:
-- **`setup <id> [--profile <name>] [--reinstall] [--dry-run]`**: Applied profile-defined install and validation commands to isolated worktrees; recorded execution states in metadata (`setup.install_ran`, `setup.install_succeeded`, `setup.setup_commands`), safely transitioning lifecycle state to `BROKEN` on validation failure.
-- **`env <id> [--mode copy|link|skip|generate] [--from <path>] [--dry-run]`**: Applied explicit environment file policies (`copy`, `link`, `skip`, `generate`) with zero silent copying or secret leakage; validates source file presence and supports dry-run preview.
-- **`exec <id> -- <command...>`**: Executed arbitrary commands inside the worktree directory, injected profile-defined environment variables (`env_vars`), and directly forwarded child process exit codes (e.g. 0, 1, 42).
-- **Profile Integration in `spawn`**: Worktree creation automatically bootstraps setup and env policies unless `--no-setup` is passed.
-- **Automated Test Suite**: 43/43 tests passing across 15 test suites (9 unit + 6 integration suites).
+Successfully implemented Phase 4 Parallel Variant Workflows for **Mannostree**, preserving 100% backward compatibility across all previous phases:
+- **`parallel spawn <feature> -n <count> [--base-branch <base>] [--profile <name>] [--plan-mode shared|isolated] [--dry-run]`**:
+  - Spawns N parallel variant worktrees (`.worktrees/<feature>-v1`, `.worktrees/<feature>-v2`, ... `.worktrees/<feature>-vN`) and branches (`experiment/<feature>-v1`, etc.) from an identical explicit base branch.
+  - Automatically persists experiment group records in `.mannostree/experiments/<feature>.json`.
+  - Sets `parallel` metadata on each worktree record (`experiment_name`, `winner: false`, `selected: false`).
+- **`parallel compare <feature> [--json] [--yaml]`**:
+  - Compares all variants side-by-side with ahead/behind commit distances, diff statistics (files changed, lines added/removed), validation statuses, review states, and lifecycle stages.
+  - Purely read-only; never mutates git or disk.
+- **`parallel pick <feature> --winner <id_or_index> [--cleanup-losers] [--archive-losers] [--reason <text>] [--dry-run]`**:
+  - Explicitly marks winning variant in worktree and experiment metadata.
+  - **Enforces Hard Invariant**: NO AUTO-MERGE into base branch.
+  - **Enforces Hard Invariant**: NO AUTO-DELETE of losing variants unless explicitly requested with `--cleanup-losers --yes`.
+- **Automated Test Suite**: 48/48 tests passing across 17 test suites (10 unit + 7 integration suites).
 
 ## Files Changed / Added
-- `src/config/schema.ts`: Added `env_vars` and `generate_command` to `ProfileConfigSchema`.
-- `src/core/setup.ts`: Added `SetupEngine` with `applyProfile`, `applyEnvPolicy`, `execInWorktree`.
-- `src/core/orchestrator.ts`: Added `setup`, `env`, and `exec` methods and profile initialization in `spawn`.
-- `src/cli/output.ts`: Added formatters `formatSetupResult`, `formatEnvResult`.
-- `src/cli/commands/setup.ts`: Added CLI `setup` command.
-- `src/cli/commands/env.ts`: Added CLI `env` command.
-- `src/cli/commands/exec.ts`: Added CLI `exec` command.
-- `src/cli/index.ts`: Registered Phase 3 commands.
-- `src/index.ts`: Exported `SetupEngine` and types.
-- `tests/unit/setup.test.ts`: Unit tests for setup profile execution and validation failure handling.
-- `tests/unit/env.test.ts`: Unit tests for env file copy, link, skip, and generate modes.
-- `tests/unit/exec.test.ts`: Unit tests for command execution, env variable injection, and exit code forwarding.
-- `tests/integration/phase3.test.ts`: End-to-end integration tests for `setup`, `env`, and `exec` CLI commands.
+- `src/metadata/schema.ts`: Added `ExperimentRecordSchema`.
+- `src/types/index.ts`: Added `ExperimentRecord` interface.
+- `src/metadata/store.ts`: Added `saveExperiment`, `getExperiment`, `listExperiments`, `deleteExperiment`.
+- `src/git/engine.ts`: Added `getDiffShortStat()` to calculate diff additions/deletions/files.
+- `src/core/parallel.ts`: Added `ParallelEngine` managing variant spawn, comparison, and winner selection.
+- `src/core/orchestrator.ts`: Added `parallelSpawn`, `parallelCompare`, `parallelPick`.
+- `src/cli/output.ts`: Added formatters `formatParallelSpawnResult`, `formatParallelCompareResult`, `formatParallelPickResult`.
+- `src/cli/commands/parallel.ts`: Added `parallel spawn`, `parallel compare`, and `parallel pick` CLI commands.
+- `src/cli/index.ts`: Registered `parallel` command suite.
+- `src/index.ts`: Exported `ParallelEngine` and types.
+- `tests/unit/parallel.test.ts`: Unit tests for parallel variant spawning, diff comparison, and winner selection.
+- `tests/integration/phase4.test.ts`: End-to-end integration tests for `parallel` CLI commands.
 
 ## Test Evidence
 - `npm run lint`: **Passed** (0 type errors).
 - `npm run build`: **Passed** (Clean compilation to `dist/`).
-- `npm test -- --run`: **Passed** (43/43 tests passing in 1.01s).
+- `npm test -- --run`: **Passed** (48/48 tests passing in 1.05s).
 
 ```text
  ✓ tests/unit/artifact.test.ts (2 tests)
- ✓ tests/unit/config.test.ts (4 tests)
  ✓ tests/unit/metadata.test.ts (3 tests)
+ ✓ tests/unit/config.test.ts (4 tests)
  ✓ tests/unit/base-resolver.test.ts (4 tests)
  ✓ tests/unit/recover.test.ts (2 tests)
  ✓ tests/unit/clean.test.ts (2 tests)
  ✓ tests/unit/doctor.test.ts (3 tests)
  ✓ tests/unit/setup.test.ts (3 tests)
- ✓ tests/integration/cli.test.ts (3 tests)
  ✓ tests/unit/env.test.ts (4 tests)
+ ✓ tests/integration/cli.test.ts (3 tests)
  ✓ tests/unit/exec.test.ts (3 tests)
  ✓ tests/unit/sync.test.ts (3 tests)
+ ✓ tests/unit/parallel.test.ts (4 tests)
+ ✓ tests/integration/phase4.test.ts (1 test)
  ✓ tests/integration/phase3.test.ts (1 test)
  ✓ tests/integration/bin.test.ts (3 tests)
  ✓ tests/integration/phase2.test.ts (3 tests)
 
- Test Files  15 passed (15)
-      Tests  43 passed (43)
+ Test Files  17 passed (17)
+      Tests  48 passed (48)
 ```
 
 ## Trade-offs
-- `exec` utilizes shell spawning with direct stdout/stderr streaming in interactive mode to guarantee full TTY and pipeline support.
-- Env file operations require explicit configuration to prevent unintended propagation of sensitive environment files.
-
-## Risks & Known Limitations
-- Phase 4 will introduce parallel experiment variants (`parallel spawn`, `parallel compare`, `parallel pick`).
-- Phase 5 will introduce GitHub publish flows and PR creation.
+- Comparing diff metrics utilizes `git diff --shortstat` against base merge-base commit for high performance and low overhead.
+- Winner selection intentionally leaves merging and PR creation to subsequent explicit publish commands (Phase 5).

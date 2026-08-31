@@ -1,4 +1,4 @@
-# Independent Review: Phase 3 Project-Aware Setup & Profiles
+# Independent Review: Phase 4 Parallel Variant Workflows
 
 ## Verdict
 **PASSED**
@@ -13,11 +13,11 @@ None.
 None.
 
 ## Suggestions
-- In Phase 4, integrate profile execution into parallel variant spawning (`parallel spawn -n N`) so that each variant workspace is initialized with its specified profile.
+- In Phase 5, provide seamless integration between winning variant selection and `mannostree pr` generation.
 
 ## Invariant & Security Verification Evidence
-- [x] **No Implicit Secrets Leakage**: Env files are only copied or linked when explicitly requested via `--mode` or configured profile policy.
-- [x] **State Integrity on Failure**: When a profile install command fails, `lifecycle_state` transitions directly to `BROKEN` with explicit errors recorded in metadata.
-- [x] **Exit Code Forwarding**: `mannostree exec` cleanly forwards child process exit codes (0, 1, 42) directly to the parent caller.
-- [x] **Dry-Run Purity**: `--dry-run` on `setup` and `env` previews planned actions without running shell commands or modifying files on disk.
-- [x] **Full Backward Compatibility**: All 32 existing tests from Phase 1 and Phase 2 continue to pass without regression.
+- [x] **No Auto-Merge Invariant**: `parallel pick` strictly marks the winner in metadata without invoking `git merge` or altering the base branch.
+- [x] **No Auto-Delete Invariant**: Losing variants are preserved on disk and in git unless explicitly requested with `--cleanup-losers` AND `--yes`.
+- [x] **Shared Explicit Base Commit**: All parallel variants spawn from the exact same explicit base commit.
+- [x] **Dry-Run Purity**: `--dry-run` on `parallel spawn` and `parallel pick` previews actions without creating branches or altering metadata.
+- [x] **Full Backward Compatibility**: All 43 tests from Phases 1, 2, and 3 continue to pass without regression.

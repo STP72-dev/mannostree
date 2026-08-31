@@ -1,33 +1,31 @@
-# Solution Evaluation & Scorecard: Phase 3 Project-Aware Setup & Profiles
+# Solution Evaluation & Scorecard: Phase 4 Parallel Variant Workflows
 
 ## Hard Gates
 
-| Gate | Requirement | Option 1 (Setup Engine) | Option 2 (External Scripts) | Option 3 (Monolithic) |
-|------|-------------|-------------------------|-----------------------------|-----------------------|
-| **1. Explicit Base Compatibility** | Preserves base branch safety | **PASS** | **PASS** | **PASS** |
-| **2. Lifecycle Ownership** | Single lifecycle layer (ADR-001) | **PASS** | **FAIL** (ADR-001) | **PASS** |
-| **3. Secret Safety** | Explicit opt-in for env files | **PASS** | **FAIL** | **PASS** |
-| **4. Dry-Run Purity** | No mutations during dry-run | **PASS** | FAIL | **PASS** |
-| **5. Exit Code Forwarding** | Exact code forwarding in exec | **PASS** | FAIL | **PASS** |
-| **6. Failure Transition** | Safe transition to BROKEN | **PASS** | FAIL | **PASS** |
-| **Result** | | **QUALIFIED** | **DISQUALIFIED** | **QUALIFIED** |
+| Gate | Requirement | Option 1 (Parallel Engine) | Option 2 (Loose Variants) | Option 3 (Auto-Merge) |
+|------|-------------|----------------------------|---------------------------|-----------------------|
+| **1. No Auto-Merge** | Winner selection does not merge | **PASS** | **PASS** | **FAIL** (Hard Rule) |
+| **2. No Auto-Delete** | Losers preserved by default | **PASS** | **PASS** | **FAIL** (Hard Rule) |
+| **3. Shared Base** | Identical explicit base commit | **PASS** | FAIL | **PASS** |
+| **4. Group Registry** | Persists `.mannostree/experiments/` | **PASS** | FAIL | **PASS** |
+| **5. Dry-Run Purity** | No mutations during dry-run | **PASS** | FAIL | **PASS** |
+| **Result** | | **QUALIFIED** | **DISQUALIFIED** | **DISQUALIFIED** |
 
 ---
 
-## Weighted Scoring (Qualified Options)
+## Weighted Scoring (Qualified Option)
 
-| Evaluation Dimension | Weight | Option 1 (Setup Engine) | Option 3 (Monolithic) |
-|----------------------|--------|-------------------------|-----------------------|
-| **Safety & Secret Preservation** | 30 | 30 | 25 |
-| **Specification & Acceptance Fit** | 25 | 25 | 22 |
-| **Diagnostics & Failure Handling** | 20 | 20 | 15 |
-| **Compatibility & Maintainability** | 15 | 14 | 10 |
-| **Implementation Scope & Reversibility** | 10 | 9 | 6 |
-| **Total Score** | **100** | **98** | **78** |
+| Evaluation Dimension | Weight | Option 1 (Parallel Engine) |
+|----------------------|--------|----------------------------|
+| **Safety & No-Auto-Merge Invariants** | 30 | 30 |
+| **Specification & Acceptance Fit** | 25 | 25 |
+| **Comparison & Metrics Engine** | 20 | 20 |
+| **Compatibility & Maintainability** | 15 | 14 |
+| **Implementation Scope & Reversibility** | 10 | 9 |
+| **Total Score** | **100** | **98** |
 
 ---
 
 ## Decision Record
-- **Selected Option**: **Option 1 (Integrated Setup Engine with Profile Schema & Direct Execution)**.
-- **Rationale**: Option 1 achieves **98/100**, exceeding the qualification threshold and surpassing Option 3 by 20 points.
-- **Parallel Permission**: `never`.
+- **Selected Option**: **Option 1 (Integrated Parallel Engine with Dedicated Experiment Group Registry)**.
+- **Score**: **98/100**.

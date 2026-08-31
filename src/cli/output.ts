@@ -1,8 +1,9 @@
 import YAML from 'yaml';
 import chalk from 'chalk';
-import { CommandOutput, GlobalOptions, WorktreeRecord } from '../types/index.js';
+import { CommandOutput, GlobalOptions, WorktreeRecord, ExperimentRecord } from '../types/index.js';
 import { DoctorReport } from '../core/doctor.js';
 import { SetupApplyResult, EnvApplyResult } from '../core/setup.js';
+import { ParallelComparisonReport, ParallelPickResult } from '../core/parallel.js';
 
 export function formatOutput<T>(
   output: CommandOutput<T>,
@@ -255,4 +256,81 @@ export function formatEnvResult(
       : chalk.green(`✔ Env policy mode '${result.mode}' applied to '${result.id}'`),
     `  ${chalk.dim('Files handled:')} ${result.files_handled.length > 0 ? result.files_handled.join(', ') : 'none'}`,
   ].join('\n');
+}
+
+export function formatParallelSpawnResult(
+  result: { feature: string; base_branch: string; variants: WorktreeRecord[]; experiment: ExperimentRecord },
+  dryRun: boolean
+): string {
+  const lines: string[] = [
+    dryRun
+      ? chalk.yellow(`Plan: would spawn ${result.variants.length} parallel variants for feature '${result.feature}' from '${result.base_branch}'`)
+      : chalk.green(`✔ Spawned ${result.variants.length} parallel variants for feature '${result.feature}':`),
+  ];
+
+  for (const v of result.variants) {
+    lines.push(`  - ${chalk.bold(v.id)}: branch ${chalk.green(v.branch)} -> ${chalk.dim(v.worktree_path)}`);
+  }
+
+  return lines.join('\n');
+}
+
+export function formatParallelCompareResult(report: ParallelComparisonReport): string {
+  const lines: string[] = [
+    chalk.bold.cyan(`📊 Parallel Variant Comparison: ${report.feature}`),
+    `  ${chalk.dim('Base Branch:')}  ${chalk.yellow(report.base_branch)}`,
+    `  ${chalk.dim('Winner:')}       ${report.winner ? chalk.green.bold(report.winner) : chalk.dim('none selected')}`,
+    '',
+  ];
+
+  const headers = ['VARIANT', 'BRANCH', 'AHEAD/BEHIND', 'FILES', '+ / -', 'VALIDATION', 'LIFECYCLE', 'WINNER'];
+  const rows = report.variants.map((v) => [
+    v.variant,
+    v.branch,
+    `+${v.ahead_count} / -${v.behind_count}`,
+    String(v.files_changed),
+    `+${v.lines_added} / -${v.lines_removed}`,
+    v.validation_status,
+    v.lifecycle_state,
+    v.is_winner ? '★ WINNER' : '-',
+  ]);
+
+  const colWidths = headers.map((h, i) => {
+    return Math.max(h.length, ...rows.map((row) => row[i].length));
+  });
+
+  const pad = (str: string, width: number) => str.padEnd(width);
+
+  const headerLine = chalk.bold(headers.map((h, i) => pad(h, colWidths[i])).join('  '));
+  const separatorLine = chalk.dim(colWidths.map((w) => '─'.repeat(w)).join('  '));
+  const dataLines = rows.map((row) =>
+    row.map((cell, i) => {
+      if (cell.includes('WINNER')) return chalk.green.bold(pad(cell, colWidths[i]));
+      if (cell === 'passed') return chalk.green(pad(cell, colWidths[i]));
+      if (cell === 'failed') return chalk.red(pad(cell, colWidths[i]));
+      return pad(cell, colWidths[i]);
+    }).join('  ')
+  );
+
+  lines.push(headerLine, separatorLine, ...dataLines);
+  return lines.join('\n');
+}
+
+export function formatParallelPickResult(
+  result: ParallelPickResult,
+  dryRun: boolean
+): string {
+  const lines: string[] = [
+    dryRun
+      ? chalk.yellow(`Plan: would pick '${result.winner}' as winning variant for feature '${result.feature}'`)
+      : chalk.green(`✔ Selected '${result.winner}' as winning variant for '${result.feature}'`),
+  ];
+
+  if (result.cleaned_losers.length > 0) {
+    lines.push(chalk.dim(`Cleaned ${result.cleaned_losers.length} losing variant(s): ${result.cleaned_losers.join(', ')}`));
+  } else {
+    lines.push(chalk.dim('Losing variants were preserved on disk and in git.'));
+  }
+
+  return lines.join('\n');
 }

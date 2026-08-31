@@ -1,66 +1,54 @@
-# Solution Options: Phase 3 Project-Aware Setup & Profiles
+# Solution Options: Phase 4 Parallel Variant Workflows
 
-## Option 1: Integrated Setup Engine with Profile Schema & Direct Execution (Recommended)
+## Option 1: Integrated Parallel Engine with Dedicated Experiment Group Registry (Recommended)
 
 ### Architecture & Module Boundaries
-- `src/config/schema.ts`: Expand `ProfileConfigSchema` to include `env_vars: z.record(z.string()).default({})` and `generate_command: z.string().optional()`.
-- `src/core/setup.ts`: Implement `SetupEngine` with:
-  - `applyProfile(worktreePath, profile, options)`: Runs install and validation commands.
-  - `applyEnvPolicy(worktreePath, profile, mode, fromPath, options)`: Handles copy, link, skip, generate.
-  - `execCommand(worktreePath, commandArgs, profile, options)`: Runs arbitrary commands in worktree with env injection and exit code forwarding.
-- `src/core/orchestrator.ts`: Integrate `SetupEngine` into `spawn`, `setup`, `env`, and `exec`.
-- `src/cli/commands/`: Add `setup.ts`, `env.ts`, `exec.ts`.
+- `src/metadata/schema.ts`: Define `ExperimentRecordSchema` and update `WorktreeRecordSchema.parallel`.
+- `src/metadata/store.ts`: Add atomic persistence for `.mannostree/experiments/<feature>.json` (`saveExperiment`, `getExperiment`, `listExperiments`).
+- `src/git/engine.ts`: Add `getDiffShortStat()` to compute diff metrics.
+- `src/core/parallel.ts`: Implement `ParallelEngine` managing `spawnVariants`, `compareVariants`, and `pickWinner`.
+- `src/core/orchestrator.ts`: Expose `parallelSpawn`, `parallelCompare`, `parallelPick`.
+- `src/cli/commands/parallel.ts`: CLI subcommand suite (`mannostree parallel spawn|compare|pick`).
 
 ### State Transitions & Metadata Impact
-- Updates `setup` block in `worktree.json`: `setup_mode`, `env_mode`, `install_ran`, `install_succeeded`, `setup_commands`.
-- Transitions `lifecycle_state` to `CONTEXT_PACKED` on success, or `BROKEN` on install/validation failure.
+- Atomic records in `.mannostree/experiments/<feature>.json` tracking variants list, winner status, selected_at, and plan mode.
+- Each variant worktree record updated with `parallel: { experiment_name, winner, selected }`.
 
-### Dry-Run & Error Handling
-- Full dry-run preview across `setup` and `env`.
-- Uses `ExitCode.SETUP_ENV_ERROR` (5) on install or env copy failure.
-- `exec` forwards the executed process's exact exit code directly.
-
-### Tests
-- Unit tests for env copy, link, skip, generate; install commands execution; validation failures.
-- Integration tests for CLI `setup`, `env`, `exec`.
+### Dry-Run & Safety Invariants
+- Full dry-run preview across `parallel spawn` and `parallel pick`.
+- Strict enforcement of NO AUTO-MERGE and NO AUTO-DELETE of losing variants without `--cleanup-losers --yes`.
 
 ### Scope & Reversibility
-- Minimal changes, clean modular design, 100% backward compatible.
+- Modular, fully reversible, 100% backward compatible with existing test suite.
 
 ---
 
-## Option 2: External Task Runners & Shell Templates
+## Option 2: Loose Scripted Variants without Group Registry
 
 ### Architecture & Module Boundaries
-- Delegates setup to external tool managers (Makefiles, npm scripts, shell wrappers) without unified Mannostree profile definitions.
+- Creates variants as ad-hoc single worktrees without persisting `.mannostree/experiments/<feature>.json`.
 
 ### State Transitions & Metadata Impact
-- Weak lifecycle tracking; metadata cannot reliably capture command outcomes.
+- Lacks group-level cohesion; comparison commands must guess variant relationships from string matching.
 
-### Dry-Run & Error Handling
-- Difficult to provide dry-run previews of multi-step external shell scripts.
-
-### Tests
-- Brittle environment-dependent test harness.
+### Dry-Run & Safety Invariants
+- High risk of orphaned state and uncoordinated cleanup.
 
 ### Scope & Reversibility
-- High risk of platform incompatibility and violates ADR-001.
+- Fragile and violates metadata expectations in AGENTS.md.
 
 ---
 
-## Option 3: Monolithic Orchestrator with Inline Subprocesses
+## Option 3: Auto-merging Worktree Orchestrator
 
 ### Architecture & Module Boundaries
-- Implements all setup, env copying, and exec execution directly inside `MannostreeOrchestrator` methods without a dedicated `SetupEngine`.
+- Automatically merges the selected winner into base branch during `pick` and deletes all other variants.
 
 ### State Transitions & Metadata Impact
-- Bloats orchestrator class and mixes low-level file I/O with lifecycle orchestration.
+- Violates non-negotiable project rules.
 
-### Dry-Run & Error Handling
-- Tightly couples dry-run logic with CLI output formatting.
-
-### Tests
-- Harder to unit test env and setup logic in isolation.
+### Dry-Run & Safety Invariants
+- Disqualified by Hard Gate: Violates NO AUTO-MERGE rule.
 
 ### Scope & Reversibility
-- Less maintainable for Phase 4+ extensions.
+- Destructive and unsafe.

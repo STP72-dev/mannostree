@@ -4,12 +4,14 @@ import { MannostreeConfig } from '../config/schema.js';
 import {
   RegistryRecordSchema,
   WorktreeRecordSchema,
+  ExperimentRecordSchema,
 } from './schema.js';
 import {
   ExitCode,
   MannostreeError,
   RegistryRecord,
   WorktreeRecord,
+  ExperimentRecord,
 } from '../types/index.js';
 
 export function writeAtomicJson(filePath: string, data: unknown): void {
@@ -82,6 +84,10 @@ export class MetadataStore {
 
   public getWorktreeRecordPath(id: string): string {
     return path.join(this.worktreesDir, `${id}.json`);
+  }
+
+  public getExperimentRecordPath(feature: string): string {
+    return path.join(this.experimentsDir, `${feature}.json`);
   }
 
   public getArchiveRecordPath(id: string): string {
@@ -214,6 +220,70 @@ export class MetadataStore {
       const timeB = new Date(b.last_activity_at || b.updated_at).getTime();
       return timeB - timeA;
     });
+
+    return records;
+  }
+
+  public async getExperiment(feature: string): Promise<ExperimentRecord | null> {
+    const filePath = this.getExperimentRecordPath(feature);
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+
+    const raw = readJson<unknown>(filePath);
+    const parsed = ExperimentRecordSchema.safeParse(raw);
+    if (!parsed.success) {
+      throw new MannostreeError(
+        `Invalid experiment record schema for ${feature} in ${filePath}:\n${parsed.error.message}`,
+        ExitCode.METADATA_INCONSISTENCY
+      );
+    }
+    return parsed.data as ExperimentRecord;
+  }
+
+  public async saveExperiment(record: ExperimentRecord): Promise<void> {
+    record.updated_at = new Date().toISOString();
+
+    const validated = ExperimentRecordSchema.safeParse(record);
+    if (!validated.success) {
+      throw new MannostreeError(
+        `Experiment record validation failed for ${record.feature}: ${validated.error.message}`,
+        ExitCode.VALIDATION_FAILURE
+      );
+    }
+
+    const filePath = this.getExperimentRecordPath(record.feature);
+    writeAtomicJson(filePath, validated.data);
+
+    // Update registry index
+    const registry = await this.getRegistry();
+    if (!registry.experiments.includes(record.feature)) {
+      registry.experiments.push(record.feature);
+      await this.saveRegistry(registry);
+    }
+  }
+
+  public async deleteExperiment(feature: string): Promise<void> {
+    const filePath = this.getExperimentRecordPath(feature);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    const registry = await this.getRegistry();
+    registry.experiments = registry.experiments.filter((f) => f !== feature);
+    await this.saveRegistry(registry);
+  }
+
+  public async listExperiments(): Promise<ExperimentRecord[]> {
+    const registry = await this.getRegistry();
+    const records: ExperimentRecord[] = [];
+
+    for (const feature of registry.experiments) {
+      const record = await this.getExperiment(feature);
+      if (record) {
+        records.push(record);
+      }
+    }
 
     return records;
   }

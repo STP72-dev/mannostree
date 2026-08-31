@@ -142,3 +142,19 @@ export const RegistryRecordSchema = z.object({
   worktrees: z.array(z.string()).default([]),
   experiments: z.array(z.string()).default([]),
 });
+
+export const ExperimentRecordSchema = z.object({
+  version: z.number().default(1),
+  feature: z.string(),
+  base_branch: z.string(),
+  profile: z.string().default('default'),
+  created_at: z.string(),
+  updated_at: z.string(),
+  variants: z.array(z.string()),
+  winner: z.string().nullable().optional(),
+  selected_at: z.string().nullable().optional(),
+  selection_reason: z.string().nullable().optional(),
+  status: z.enum(['active', 'completed', 'cleaned']).default('active'),
+  plan_mode: z.enum(['shared', 'isolated']).default('shared'),
+});
+

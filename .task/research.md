@@ -1,32 +1,32 @@
-# Research & Technical Decisions: Phase 3 Project-Aware Setup & Profiles
+# Research & Technical Decisions: Phase 4 Parallel Variant Workflows
 
 ## Context & Objectives
-Phase 3 establishes the Setup Engine and Profile Management subsystem in Mannostree. This subsystem is responsible for bootstrapping isolated workspace dependencies, applying explicit environment policies (`.env` file handling), and running commands directly inside worktrees with proper environment injection.
+Phase 4 implements parallel variant exploration and comparison workflows. This enables engineers and AI agents to concurrently prototype alternative implementations from an identical base commit, evaluate diffs and validation metrics side-by-side, and explicitly promote a winning variant without risking accidental code merges or unintended deletions.
 
 ## Research Findings & Decision Impact
 
-### 1. Subprocess Execution & Environment Variable Injection
-- **Source**: Node.js `node:child_process` documentation (`https://nodejs.org/api/child_process.html`).
-- **Date Accessed**: 2026-08-31
+### 1. Experiment Record & Topology Architecture
+- **Source**: `AGENTS.md` and `docs/02-project-kickoff/cli-spec.md`.
 - **Findings**:
-  - `child_process.spawn(cmd, args, { cwd, env, stdio: 'inherit' | 'pipe', shell: true })` allows cross-platform execution of compound commands (e.g. `npm ci && npm test`), respects custom working directories, and captures/forwards exact process exit codes.
-  - When running `mannostree exec <id> -- <cmd...>`, `stdio: 'inherit'` ensures seamless interactive/streaming output and proper TTY signal handling.
-- **Decision Impact**: Implement a dedicated `SetupEngine` with helper `runCommand(cmd, cwd, env)` and `execInWorktree(worktreePath, cmdArgs, env)`.
+  - Parallel variants for feature `<name>` must follow canonical naming:
+    - Worktree directory: `.worktrees/<feature>-v<N>`
+    - Git branch: `experiment/<feature>-v<N>`
+    - Worktree record ID: `experiment-<feature>-v<N>`
+  - Persistent record: `.mannostree/experiments/<feature>.json`.
+  - Shared base branch requirement: All N variants must branch from the exact same explicit base commit.
+- **Decision Impact**: Implement `ParallelEngine` in `src/core/parallel.ts` orchestrating variant spawn, group metadata registration, comparison aggregation, and winner selection.
 
-### 2. Explicit Environment File Handling (`env_mode`)
-- **Source**: CLAUDE.md & ADR-003 / ADR-007.
-- **Date Accessed**: 2026-08-31
+### 2. Side-by-Side Diff & Metrics Extraction
+- **Source**: Git porcelain diff specifications (`git diff --shortstat <base>...<branch>`).
 - **Findings**:
-  - Never implicitly copy or propagate `.env` files.
-  - `copy`: Explicitly copies listed `env_files` from `--from` (default repo root) to target worktree root.
-  - `link`: Symlinks listed `env_files` using relative symlinks or absolute paths.
-  - `skip`: Default mode; does nothing.
-  - `generate`: Runs custom profile generator script (e.g. `npm run generate-env`).
-- **Decision Impact**: Implement `applyEnvPolicy()` in `SetupEngine` enforcing strict source validation and dry-run preview.
+  - `git diff --shortstat <base>...<branch>` parses into files changed, insertions (+), and deletions (-).
+  - Combining this with `getAheadBehindCount` and `ValidationMetadata` gives complete comparison data across variants.
+- **Decision Impact**: Add `getDiffShortStat(worktreePath, baseBranch, branch)` to `GitEngine`.
 
-### 3. Setup Lifecycle State & Validation Failure Handling
-- **Source**: `docs/02-project-kickoff/worktree-lifecycle.md`.
-- **Date Accessed**: 2026-08-31
+### 3. Winner Selection & No-Auto-Merge Invariants
+- **Source**: `AGENTS.md` Hard Project Rules.
 - **Findings**:
-  - If setup install or validation fails, worktree must not silently proceed. The worktree metadata must record `setup.install_succeeded = false` and transition `lifecycle_state` to `BROKEN` with diagnostic error output.
-- **Decision Impact**: Implement status updating and `BROKEN` transition on setup failure.
+  - Winner selection must update `.mannostree/experiments/<feature>.json` and the winning worktree record's `parallel.winner = true`.
+  - Selection MUST NOT trigger `git merge` or merge into base.
+  - Losing variants MUST NOT be deleted unless the user explicitly supplies `--cleanup-losers --yes`.
+- **Decision Impact**: Implement `pick()` enforcing explicit winner marking and requiring separate confirmation for loser cleanup.

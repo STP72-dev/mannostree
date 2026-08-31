@@ -1,57 +1,49 @@
-# Task Contract: Phase 3 Project-Aware Setup & Profiles
+# Task Contract: Phase 4 Parallel Variant Workflows
 
 ## Problem
-Developers and autonomous worker agents working inside isolated worktrees need dependable, profile-driven environment initialization (e.g. running `npm ci`, setting up Python venvs, managing `.env` files safely without silent secret leakage, and executing commands directly within a worktree's isolated directory).
+Complex features, architectural spikes, and AI agent experiments often benefit from exploring multiple implementation hypotheses in parallel (e.g. comparing different algorithms, libraries, or prompting strategies). Mannostree must support first-class parallel variant generation, side-by-side comparison, and explicit winner selection without risking accidental auto-merges or silent deletion of losing worktrees.
 
 ## Scope
-Deliver Phase 3 Setup Engine and Profile Management while preserving 100% backward compatibility with Phase 1 and Phase 2:
-1. **Profile Engine & Configuration**:
-   - Support named profiles in `.mannostree.yml` (`install_commands`, `env_mode`, `env_files`, `validation_commands`, `env_vars`, `generate_command`).
-   - Integrate setup execution into `spawn` when `--no-setup` is not passed.
-2. **`setup <id> [--profile <name>] [--reinstall] [--dry-run]`**:
-   - Re-applies setup profile to an existing worktree.
-   - Runs `install_commands` and `validation_commands` in worktree directory.
-   - Updates worktree metadata (`setup.install_ran`, `setup.install_succeeded`, `setup.setup_mode`, `setup.setup_commands`).
-   - If setup validation fails, updates status and transitions lifecycle state to `BROKEN` with diagnostic notes.
+Deliver Phase 4 Parallel Variant Workflows while preserving 100% backward compatibility with Phases 1, 2, and 3:
+1. **`parallel spawn <feature> -n <count> [--base-branch <base>] [--profile <name>] [--plan-mode shared|isolated] [--dry-run]`**:
+   - Spawns N isolated variant worktrees: `.worktrees/<feature>-v1`, `.worktrees/<feature>-v2`, ... `.worktrees/<feature>-vN`.
+   - Branch naming policy: `experiment/<feature>-v1`, `experiment/<feature>-v2`, ... `experiment/<feature>-vN`.
+   - All variants share the exact same explicit base branch.
+   - Creates and updates `.mannostree/experiments/<feature>.json`.
+   - Sets `parallel` metadata on each worktree record (`experiment_name`, `winner: false`, `selected: false`).
    - Supports `--dry-run` preview.
-3. **`env <id> [--mode copy|link|skip|generate] [--from <path>] [--dry-run]`**:
-   - Manages environment configuration files with strict explicit opt-in policy:
-     - `copy`: Copies listed `env_files` from `--from` (default repo root) to worktree root.
-     - `link`: Symlinks listed `env_files` from `--from` (default repo root) to worktree root.
-     - `skip`: Does nothing.
-     - `generate`: Runs profile's `generate_command` in worktree directory.
-   - Refuses `copy` or `link` if source env file does not exist.
-   - Updates metadata (`setup.env_mode`).
+2. **`parallel compare <feature> [--metrics] [--json] [--yaml]`**:
+   - Generates tabular and structured comparisons across all variants in the experiment group.
+   - Compares: branch ahead/behind count, lines added/removed, files changed, test validation status, and lifecycle state.
+   - Read-only; never mutates git or disk.
+3. **`parallel pick <feature> --winner <variant_id_or_index> [--cleanup-losers] [--archive-losers] [--reason <text>] [--dry-run]`**:
+   - Explicit winner selection:
+     - Sets `winner: true` and `selected: true` on the winning worktree record.
+     - Updates `.mannostree/experiments/<feature>.json` with `winner`, `selected_at`, `selection_reason`.
+   - **Hard Rule**: NO AUTO-MERGE. Selection does not merge the branch into base.
+   - **Hard Rule**: NO AUTO-DELETE of losers unless `--cleanup-losers` AND `--yes` are explicitly passed.
    - Supports `--dry-run` preview.
-4. **`exec <id> -- <command...>`**:
-   - Executes arbitrary command string or arguments directly inside `<worktree_path>`.
-   - Injects profile-defined environment variables (`env_vars`).
-   - Streams stdout/stderr and preserves the exact exit code of the executed child process.
-5. **Documentation & Testing**:
-   - Unit tests for setup profile execution, env file copy/link/generate, and exec command forwarding.
-   - Integration tests for end-to-end CLI commands.
-   - Update README and CLI documentation.
+4. **Metadata Store & Schema**:
+   - Add `ExperimentRecordSchema` and `saveExperiment`, `getExperiment`, `listExperiments` in `MetadataStore`.
+   - Atomic persistence in `.mannostree/experiments/<feature>.json`.
+5. **Testing & Documentation**:
+   - Unit tests for parallel spawn, compare metrics, and winner selection.
+   - Integration tests for CLI `parallel` subcommands.
+   - Update README and durable task artifacts.
 
 ## Out-of-Scope
-- Phase 4 multi-variant parallel execution (`parallel spawn`, `parallel compare`, `parallel pick`).
 - Phase 5 GitHub publish flow and PR creation.
-- Automatic secret guessing or silent `.env` file copying.
+- Auto-merge into main/base branch.
+- Silent deletion of non-selected variants.
 
 ## Acceptance Criteria
-- [ ] **Phase 1 & Phase 2 Compatibility**: All existing commands and tests continue to pass without regression.
-- [ ] **`setup`**: Executes profile install and validation commands; updates `setup` metadata; `--dry-run` previews actions without running commands.
-- [ ] **`env`**: Safely copies or symlinks listed env files; validates source file existence; supports `--dry-run`.
-- [ ] **`exec`**: Runs commands inside the worktree directory; injects environment variables; forwards exact process exit codes (e.g. exit code 0, 1, 42).
+- [ ] **Phase 1, 2 & 3 Compatibility**: All 43 existing unit and integration tests continue to pass.
+- [ ] **`parallel spawn`**: Spawns N variants from shared explicit base branch; follows strict naming `experiment/<feature>-vN` and `.worktrees/<feature>-vN`; saves experiment record; supports dry-run.
+- [ ] **`parallel compare`**: Compares all variants with git diff metrics and lifecycle states; supports table, JSON, and YAML formats.
+- [ ] **`parallel pick`**: Explicitly selects winner; records in experiment and worktree metadata; enforces no-auto-merge invariant; preserves losers unless explicitly commanded with `--cleanup-losers --yes`.
 - [ ] **Test Coverage**: 100% passing tests across unit and integration suites.
-
-## References
-- `AGENTS.md`
-- `CLAUDE.md`
-- `docs/01-arch-design/config-design.md`
-- `docs/02-project-kickoff/cli-spec.md`
-- `docs/02-project-kickoff/worktree-lifecycle.md`
 
 ## Explicit Assumptions
 - Base branch: `main`.
 - Publishing mode: `prepare-only`.
-- Parallel variants: `never`.
+- Parallel variants permission: Allowed under `parallel` command suite.

@@ -13,6 +13,7 @@ import { registerRecoverCommand } from './commands/recover.js';
 import { registerSetupCommand } from './commands/setup.js';
 import { registerEnvCommand } from './commands/env.js';
 import { registerExecCommand } from './commands/exec.js';
+import { registerParallelCommand } from './commands/parallel.js';
 import { ExitCode, GlobalOptions, MannostreeError } from '../types/index.js';
 
 export function createProgram(): Command {
@@ -50,6 +51,9 @@ export function createProgram(): Command {
   registerSetupCommand(program);
   registerEnvCommand(program);
   registerExecCommand(program);
+
+  // Phase 4 commands
+  registerParallelCommand(program);
 
   return program;
 }
