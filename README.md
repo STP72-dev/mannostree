@@ -179,21 +179,40 @@ mannostree clean --merged --yes
 mannostree clean --stale-days 14 --yes
 ```
 
-#### 9. Workspace Recovery (`recover`)
-Repair damaged metadata or reattach worktrees and branches:
+#### 9. Workspace Recovery & Transaction Rollback (`recover`)
+Repair damaged metadata or rollback interrupted multi-file operations:
 ```bash
 # Reconstruct metadata from on-disk directory
 mannostree recover feature-my-feature --rebuild-metadata --yes
 
 # Reattach missing worktree directory
 mannostree recover feature-my-feature --reattach-worktree --yes
+
+# Rollback any in-flight interrupted transaction from journal
+mannostree recover --rollback --yes
+```
+
+#### 10. Archive & Restore (`archive`, `restore`)
+Reclaim disk space by unmounting physical worktrees while preserving git branch history and metadata:
+```bash
+# Archive clean workspace (unmounts directory)
+mannostree archive feature-my-feature --yes
+
+# Archive dirty workspace with uncommitted changes
+mannostree archive feature-my-feature --force --yes
+
+# Restore archived workspace (re-attaches worktree)
+mannostree restore feature-my-feature --yes
+
+# List only archived workspaces
+mannostree list --archived
 ```
 
 ---
 
 ### Project-Aware Setup & Profiles (Phase 3)
 
-#### 10. Workspace Setup (`setup`)
+#### 11. Workspace Setup (`setup`)
 Apply or re-apply profile installation and validation commands to a worktree:
 ```bash
 # Run profile setup commands
@@ -206,7 +225,7 @@ mannostree setup feature-my-feature --profile node
 mannostree setup feature-my-feature --reinstall
 ```
 
-#### 11. Environment Configuration (`env`)
+#### 12. Environment Configuration (`env`)
 Manage environment files (`.env`) safely with explicit policies:
 ```bash
 # Copy env files from repo root
@@ -219,7 +238,7 @@ mannostree env feature-my-feature --mode link
 mannostree env feature-my-feature --mode generate
 ```
 
-#### 12. Execute Commands in Worktree (`exec`)
+#### 13. Execute Commands in Worktree (`exec`)
 Run commands directly inside a worktree's isolated directory with injected profile environment variables:
 ```bash
 # Run tests inside worktree
@@ -233,7 +252,7 @@ mannostree exec feature-my-feature -- git log -n 5
 
 ### Parallel Variant Workflows (Phase 4)
 
-#### 13. Spawn Parallel Variants (`parallel spawn`)
+#### 14. Spawn Parallel Variants (`parallel spawn`)
 Concurrently generate N variant worktrees and branches from a shared explicit base branch:
 ```bash
 # Spawn 3 variant experiments
@@ -243,7 +262,7 @@ mannostree parallel spawn auth-spike -n 3 -b main
 mannostree parallel spawn auth-spike -n 3 -b main --dry-run
 ```
 
-#### 14. List Parallel Experiments (`parallel list`)
+#### 15. List Parallel Experiments (`parallel list`)
 Enumerate all parallel experiment groups and their current states:
 ```bash
 mannostree parallel list
@@ -252,7 +271,7 @@ mannostree parallel list
 mannostree parallel list --status active
 ```
 
-#### 15. Compare Variants Side-by-Side (`parallel compare`)
+#### 16. Compare Variants Side-by-Side (`parallel compare`)
 Inspect comparative ahead/behind counts, diff statistics (+/- lines, changed files), and validation outcomes:
 ```bash
 # Tabular terminal comparison
@@ -262,7 +281,7 @@ mannostree parallel compare auth-spike
 mannostree parallel compare auth-spike --json
 ```
 
-#### 16. Pick Winner (`parallel pick`)
+#### 17. Pick Winner (`parallel pick`)
 Explicitly promote the winning variant in experiment metadata (never auto-merges or auto-deletes losers):
 ```bash
 # Select variant 1 as winner
@@ -272,7 +291,7 @@ mannostree parallel pick auth-spike --winner v1 --reason "Superior query perform
 mannostree parallel pick auth-spike --winner v1 --cleanup-losers --yes
 ```
 
-#### 17. Drop Experiment Group (`parallel drop`)
+#### 18. Drop Experiment Group & Status (`parallel drop`, `parallel drop-status`)
 Safely remove all variant worktrees associated with an experiment group:
 ```bash
 # Preview dropping experiment variants
@@ -280,6 +299,15 @@ mannostree parallel drop auth-spike
 
 # Execute dropping all variants and branches
 mannostree parallel drop auth-spike --yes --force
+
+# Inspect current survival/drop status for an experiment
+mannostree parallel drop-status auth-spike
+```
+
+#### 19. Parallel Winner Handoff (`parallel handoff`)
+Generate packaged handoff report and bundle linking winning justifications with preserved loser registries:
+```bash
+mannostree parallel handoff auth-spike --to "Reviewer Agent" --notes "Benchmark comparison ready"
 ```
 
 ---

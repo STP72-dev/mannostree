@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { scaffoldArtifacts } from '../../src/artifact/scaffold.js';
+import { scaffoldArtifacts, scaffoldMetadataDirectories } from '../../src/artifact/scaffold.js';
 
 describe('Artifact Scaffolding Engine', () => {
   let tempDir: string;
@@ -48,5 +48,19 @@ describe('Artifact Scaffolding Engine', () => {
 
     expect(fs.existsSync(path.join(tempDir, '.task'))).toBe(false);
     expect(fs.existsSync(path.join(tempDir, 'RESULTS.md'))).toBe(false);
+  });
+
+  it('scaffolds metadata directories including journal and archives', () => {
+    scaffoldMetadataDirectories({
+      repoRoot: tempDir,
+      metadataRoot: '.mannostree',
+      journalDirName: 'journal',
+      archiveDirName: 'archives',
+    });
+
+    expect(fs.existsSync(path.join(tempDir, '.mannostree', 'worktrees'))).toBe(true);
+    expect(fs.existsSync(path.join(tempDir, '.mannostree', 'experiments'))).toBe(true);
+    expect(fs.existsSync(path.join(tempDir, '.mannostree', 'journal'))).toBe(true);
+    expect(fs.existsSync(path.join(tempDir, '.mannostree', 'archives'))).toBe(true);
   });
 });

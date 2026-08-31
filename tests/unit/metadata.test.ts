@@ -77,4 +77,91 @@ describe('Metadata Engine', () => {
     const archiveFile = store.getArchiveRecordPath('feature-sample');
     expect(fs.existsSync(archiveFile)).toBe(true);
   });
+
+  it('validates transaction journal, health diagnostic, archive, and handoff schemas', async () => {
+    const {
+      TransactionJournalEntrySchema,
+      HealthDiagnosticSchema,
+      DropStatusReportSchema,
+      ArchiveRecordSchema,
+      ParallelHandoffPackageSchema,
+    } = await import('../../src/metadata/schema.js');
+
+    const txEntry = {
+      transaction_id: 'tx_123',
+      operation: 'spawn',
+      entity_type: 'worktree',
+      entity_id: 'feature-abc',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      state: 'in_flight',
+      intents: [
+        {
+          file_path: '.mannostree/worktrees/feature-abc.json',
+          action: 'create',
+        },
+      ],
+    };
+    expect(TransactionJournalEntrySchema.safeParse(txEntry).success).toBe(true);
+
+    const healthDiag = {
+      status: 'healthy',
+      last_verified_at: new Date().toISOString(),
+      checks: [
+        {
+          check_id: 'worktree_dir_exists',
+          passed: true,
+          severity: 'critical',
+          message: 'Worktree exists',
+        },
+      ],
+      recommended_actions: [],
+    };
+    expect(HealthDiagnosticSchema.safeParse(healthDiag).success).toBe(true);
+
+    const dropReport = {
+      feature: 'test-feat',
+      experiment_id: 'exp-1',
+      timestamp: new Date().toISOString(),
+      dry_run: false,
+      total_variants: 2,
+      dropped_count: 2,
+      surviving_count: 0,
+      experiment_record_retained: false,
+      variants: [],
+      next_steps: [],
+    };
+    expect(DropStatusReportSchema.safeParse(dropReport).success).toBe(true);
+
+    const archiveRec = {
+      entity_id: 'feature-abc',
+      entity_type: 'worktree',
+      archived_at: new Date().toISOString(),
+      base_branch: 'main',
+      head_sha: 'abcdef1234567890',
+      original_worktree_path: '.worktrees/abc',
+      branch_name: 'feature/abc',
+      metadata_snapshot_path: '.mannostree/archives/feature-abc.json',
+      artifacts: [],
+    };
+    expect(ArchiveRecordSchema.safeParse(archiveRec).success).toBe(true);
+
+    const handoffPkg = {
+      handoff_id: 'h_123',
+      feature: 'feat',
+      base_branch: 'main',
+      created_at: new Date().toISOString(),
+      winner: {
+        variant_id: 'v1',
+        branch: 'exp-v1',
+        head_sha: 'sha1',
+        selection_rationale: 'Best performance',
+      },
+      comparison_scorecard: [],
+      preserved_losers: [],
+      pr_summary_markdown: '# Summary',
+      artifact_path: '.task/parallel-handoff.md',
+    };
+    expect(ParallelHandoffPackageSchema.safeParse(handoffPkg).success).toBe(true);
+  });
 });

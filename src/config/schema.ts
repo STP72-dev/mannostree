@@ -58,6 +58,8 @@ export const MannostreeConfigSchema = z.object({
   worktree_root: z.string().default('.worktrees'),
   metadata_root: z.string().default('.mannostree'),
   artifact_dir_name: z.string().default('.task'),
+  journal_dir_name: z.string().default('journal'),
+  archive_dir_name: z.string().default('archives'),
   base_branch_resolution: BaseBranchResolutionSchema.default({}),
   profiles: z.record(ProfileConfigSchema).default({
     default: {

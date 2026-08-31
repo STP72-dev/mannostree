@@ -18,6 +18,7 @@ import { registerPrCommand } from './commands/pr.js';
 import { registerIssueCommand } from './commands/issue.js';
 import { registerTaskCommand } from './commands/task.js';
 import { registerHandoffCommand } from './commands/handoff.js';
+import { registerArchiveCommand } from './commands/archive.js';
 import { ExitCode, GlobalOptions, MannostreeError } from '../types/index.js';
 
 export function createProgram(): Command {
@@ -50,6 +51,7 @@ export function createProgram(): Command {
   registerDoctorCommand(program);
   registerCleanCommand(program);
   registerRecoverCommand(program);
+  registerArchiveCommand(program);
 
   // Phase 3 commands
   registerSetupCommand(program);

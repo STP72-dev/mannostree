@@ -12,6 +12,7 @@ export function registerListCommand(program: Command): void {
     .option('--state <state>', 'Filter by lifecycle state or status')
     .option('--kind <kind>', 'Filter by branch kind')
     .option('--tag <tag>', 'Filter by tag')
+    .option('--archived', 'List only archived workspaces')
     .action(async (cmdOptions: any) => {
       const globalOpts = program.opts<GlobalOptions>();
       const cwd = globalOpts.cwd ? globalOpts.cwd : process.cwd();
@@ -26,6 +27,7 @@ export function registerListCommand(program: Command): void {
         state: cmdOptions.state,
         kind: cmdOptions.kind,
         tag: cmdOptions.tag,
+        archived: cmdOptions.archived,
       });
 
       formatOutput(result, globalOpts, (data) => formatWorktreeTable(data));

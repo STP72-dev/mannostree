@@ -207,6 +207,113 @@ export interface CommandOutput<T = unknown> {
   errors: string[];
 }
 
+export interface TransactionIntent {
+  file_path: string;
+  action: 'create' | 'update' | 'delete';
+  previous_snapshot?: string;
+  next_snapshot?: string;
+}
+
+export interface TransactionJournalEntry {
+  transaction_id: string;
+  operation: 'spawn' | 'drop' | 'pick' | 'archive' | 'restore' | 'recover' | 'parallel_spawn' | 'parallel_drop';
+  entity_type: 'worktree' | 'experiment' | 'registry';
+  entity_id: string;
+  created_at: string;
+  updated_at: string;
+  state: 'in_flight' | 'committed' | 'rolled_back' | 'failed';
+  intents: TransactionIntent[];
+  error?: {
+    code: string;
+    message: string;
+    stack?: string;
+  };
+}
+
+export type HealthStatus = 'healthy' | 'degraded' | 'broken';
+
+export interface HealthCheckResult {
+  check_id: 'worktree_dir_exists' | 'git_worktree_registered' | 'git_branch_exists' | 'metadata_record_valid' | 'clean_git_status';
+  passed: boolean;
+  severity: 'critical' | 'warning' | 'info';
+  message: string;
+  remediation?: string;
+}
+
+export interface HealthDiagnostic {
+  status: HealthStatus;
+  last_verified_at: string;
+  checks: HealthCheckResult[];
+  recommended_actions: string[];
+}
+
+export interface VariantDropOutcome {
+  variant_id: string;
+  worktree_path: string;
+  branch: string;
+  status: 'dropped' | 'failed' | 'preserved_winner' | 'preserved_dirty';
+  error?: string;
+  remediation?: string;
+}
+
+export interface DropStatusReport {
+  feature: string;
+  experiment_id: string;
+  timestamp: string;
+  dry_run: boolean;
+  total_variants: number;
+  dropped_count: number;
+  surviving_count: number;
+  experiment_record_retained: boolean;
+  variants: VariantDropOutcome[];
+  next_steps: string[];
+}
+
+export interface ArchiveRecord {
+  entity_id: string;
+  entity_type: 'worktree' | 'experiment';
+  archived_at: string;
+  base_branch: string;
+  head_sha: string;
+  original_worktree_path: string;
+  branch_name: string;
+  metadata_snapshot_path: string;
+  artifacts: string[];
+}
+
+export interface VariantComparisonSummary {
+  variant_id: string;
+  branch: string;
+  ahead: number;
+  behind: number;
+  files_changed: number;
+  insertions: number;
+  deletions: number;
+  score?: number;
+}
+
+export interface ParallelHandoffPackage {
+  handoff_id: string;
+  feature: string;
+  base_branch: string;
+  created_at: string;
+  winner: {
+    variant_id: string;
+    branch: string;
+    head_sha: string;
+    selection_rationale: string;
+  };
+  comparison_scorecard: VariantComparisonSummary[];
+  preserved_losers: Array<{
+    variant_id: string;
+    branch: string;
+    head_sha: string;
+    archived_or_active: 'active' | 'archived';
+  }>;
+  pr_summary_markdown: string;
+  artifact_path: string;
+}
+
 export class MannostreeError extends Error {
   constructor(
     message: string,

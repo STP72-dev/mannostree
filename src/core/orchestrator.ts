@@ -2,7 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { MannostreeConfig, ProfileConfig } from '../config/schema.js';
 import { GitEngine } from '../git/engine.js';
-import { MetadataStore } from '../metadata/store.js';
+import { MetadataStore, writeAtomicJson } from '../metadata/store.js';
 import { resolveBaseBranch } from '../git/base-resolver.js';
 import { scaffoldArtifacts } from '../artifact/scaffold.js';
 import { DoctorEngine, DoctorReport, ProposedRepair } from './doctor.js';
@@ -18,13 +18,16 @@ import {
 } from './parallel.js';
 import { PublishEngine, PrOptions, PrResult, GhExecutor } from './publish.js';
 import { TaskEngine, TaskValidationResult, HandoffReport } from './task.js';
+import { ParallelHandoffEngine } from './handoff.js';
 import {
+  ArchiveRecord,
   CommandOutput,
   ExitCode,
   ExperimentRecord,
   HealthMetadata,
   LifecycleState,
   MannostreeError,
+  ParallelHandoffPackage,
   WorktreeRecord,
 } from '../types/index.js';
 
@@ -42,6 +45,7 @@ export interface ListOptions {
   state?: string;
   kind?: string;
   tag?: string;
+  archived?: boolean;
 }
 
 export interface DropOptions {
@@ -80,6 +84,7 @@ export interface RecoverOptions {
   rebuildMetadata?: boolean;
   reattachWorktree?: boolean;
   reattachBranch?: boolean;
+  recoverTransaction?: boolean;
   yes?: boolean;
   dryRun?: boolean;
 }
@@ -128,7 +133,15 @@ export class MannostreeOrchestrator {
     );
     this.publishEngine = new PublishEngine(repoRoot, config, this.git, ghExecutor);
     this.taskEngine = new TaskEngine(repoRoot, config, this.git);
+    this.parallelHandoffEngine = new ParallelHandoffEngine(
+      repoRoot,
+      config,
+      this.git,
+      this.store,
+      this.parallelEngine
+    );
   }
+  public parallelHandoffEngine: ParallelHandoffEngine;
 
   public getProfile(name: string = 'default'): ProfileConfig {
     return (
@@ -325,6 +338,12 @@ export class MannostreeOrchestrator {
   ): Promise<CommandOutput<WorktreeRecord[]>> {
     const records = await this.store.listWorktrees();
     let filtered = records;
+
+    if (options.archived) {
+      filtered = filtered.filter((r) => r.status === 'archived');
+    } else if (!options.state) {
+      filtered = filtered.filter((r) => r.status !== 'archived');
+    }
 
     if (options.state) {
       filtered = filtered.filter(
@@ -778,7 +797,7 @@ export class MannostreeOrchestrator {
   }
 
   public async recover(
-    id: string,
+    id?: string,
     options: RecoverOptions = {}
   ): Promise<
     CommandOutput<{
@@ -792,9 +811,49 @@ export class MannostreeOrchestrator {
       rebuildMetadata = false,
       reattachWorktree = false,
       reattachBranch = false,
+      recoverTransaction = false,
       yes = false,
       dryRun = false,
     } = options;
+
+    const effectiveDryRun = dryRun || !yes;
+
+    if (!id || recoverTransaction) {
+      const activeTx = this.store.journal.getActiveTransaction();
+      if (!activeTx) {
+        return {
+          command: 'recover',
+          ok: true,
+          dry_run: effectiveDryRun,
+          result: {
+            id: 'journal',
+            action: 'recover-transaction',
+            success: true,
+            details: 'No in-flight or interrupted transactions found in journal.',
+          },
+          warnings: [],
+          errors: [],
+        };
+      }
+
+      if (!effectiveDryRun) {
+        await this.store.journal.rollbackTransaction(activeTx.transaction_id);
+      }
+
+      return {
+        command: 'recover',
+        ok: true,
+        dry_run: effectiveDryRun,
+        result: {
+          id: activeTx.entity_id,
+          action: 'recover-transaction',
+          success: true,
+          details: `Rolled back interrupted transaction '${activeTx.transaction_id}' for ${activeTx.entity_type} '${activeTx.entity_id}'.`,
+        },
+        warnings: !yes ? ['Preview only. Add --yes to apply rollback.'] : [],
+        errors: [],
+      };
+    }
 
     const actionCount = [rebuildMetadata, reattachWorktree, reattachBranch].filter(Boolean).length;
     if (actionCount !== 1) {
@@ -808,8 +867,6 @@ export class MannostreeOrchestrator {
     const fullPath = record
       ? path.resolve(this.repoRoot, record.worktree_path)
       : path.resolve(this.repoRoot, this.config.worktree_root, id.replace(/^[a-z]+-/, ''));
-
-    const effectiveDryRun = dryRun || !yes;
 
     if (rebuildMetadata) {
       if (!fs.existsSync(fullPath)) {
@@ -1216,6 +1273,141 @@ export class MannostreeOrchestrator {
       ok: true,
       dry_run: false,
       result: report,
+      warnings: [],
+      errors: [],
+    };
+  }
+
+  public async archive(
+    id: string,
+    options: { force?: boolean; yes?: boolean; dryRun?: boolean } = {}
+  ): Promise<CommandOutput<{ id: string; archived: boolean; worktree_path: string }>> {
+    const { force = false, yes = false, dryRun = false } = options;
+    const effectiveDryRun = dryRun || !yes;
+
+    const record = await this.store.getWorktree(id);
+    if (!record) {
+      throw new MannostreeError(
+        `Worktree '${id}' not found in metadata registry.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    const fullPath = path.resolve(this.repoRoot, record.worktree_path);
+    if (fs.existsSync(fullPath)) {
+      const isDirty = await this.git.isWorktreeDirty(fullPath);
+      if (isDirty && !force) {
+        throw new MannostreeError(
+          `Refusing to archive worktree '${id}' with uncommitted or untracked changes. Use --force to proceed.`,
+          ExitCode.USAGE_ERROR
+        );
+      }
+    }
+
+    if (!effectiveDryRun) {
+      if (fs.existsSync(fullPath)) {
+        await this.git.exec(['worktree', 'remove', fullPath, '--force']);
+      }
+      record.status = 'archived';
+      record.lifecycle_state = 'CLEANED';
+      record.updated_at = new Date().toISOString();
+      await this.store.saveWorktree(record);
+
+      const archiveRecord: ArchiveRecord = {
+        entity_id: id,
+        entity_type: 'worktree',
+        archived_at: record.updated_at,
+        base_branch: record.base_branch,
+        head_sha: (await this.git.getHeadCommit(record.branch)) || 'unknown',
+        original_worktree_path: record.worktree_path,
+        branch_name: record.branch,
+        metadata_snapshot_path: path.relative(this.repoRoot, this.store.getWorktreeRecordPath(id)),
+        artifacts: [],
+      };
+      const archivePath = this.store.getArchiveRecordPath(id);
+      writeAtomicJson(archivePath, archiveRecord);
+    }
+
+    return {
+      command: 'archive',
+      ok: true,
+      dry_run: effectiveDryRun,
+      result: {
+        id,
+        archived: true,
+        worktree_path: record.worktree_path,
+      },
+      warnings: !yes ? ['Preview only. Add --yes to archive worktree and unmount directory.'] : [],
+      errors: [],
+    };
+  }
+
+  public async restore(
+    id: string,
+    options: { yes?: boolean; dryRun?: boolean } = {}
+  ): Promise<CommandOutput<{ id: string; restored: boolean; worktree_path: string }>> {
+    const { yes = false, dryRun = false } = options;
+    const effectiveDryRun = dryRun || !yes;
+
+    const record = await this.store.getWorktree(id);
+    if (!record) {
+      throw new MannostreeError(
+        `Worktree '${id}' not found in metadata registry.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    const branchExists = await this.git.branchOrRefExists(record.branch);
+    if (!branchExists) {
+      throw new MannostreeError(
+        `Cannot restore worktree '${id}': branch '${record.branch}' does not exist in git.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    const fullPath = path.resolve(this.repoRoot, record.worktree_path);
+    if (fs.existsSync(fullPath)) {
+      throw new MannostreeError(
+        `Target directory '${record.worktree_path}' already exists on disk.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    if (!effectiveDryRun) {
+      await this.git.exec(['worktree', 'add', fullPath, record.branch]);
+      record.status = 'created';
+      record.lifecycle_state = 'WORKTREE_READY';
+      record.updated_at = new Date().toISOString();
+      await this.store.saveWorktree(record);
+    }
+
+    return {
+      command: 'restore',
+      ok: true,
+      dry_run: effectiveDryRun,
+      result: {
+        id,
+        restored: true,
+        worktree_path: record.worktree_path,
+      },
+      warnings: !yes ? ['Preview only. Add --yes to restore worktree.'] : [],
+      errors: [],
+    };
+  }
+
+  public async parallelHandoff(
+    feature: string,
+    options: { to?: string; notes?: string; dryRun?: boolean } = {}
+  ): Promise<CommandOutput<ParallelHandoffPackage>> {
+    const handoffPkg = await this.parallelHandoffEngine.generateParallelHandoff(
+      feature,
+      options
+    );
+    return {
+      command: 'parallel handoff',
+      ok: true,
+      dry_run: !!options.dryRun,
+      result: handoffPkg,
       warnings: [],
       errors: [],
     };

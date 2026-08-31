@@ -60,12 +60,15 @@ export function readJson<T>(filePath: string): T {
   }
 }
 
+import { TransactionJournal } from './journal.js';
+
 export class MetadataStore {
   private metadataRoot: string;
   private worktreesDir: string;
   private experimentsDir: string;
   private archiveDir: string;
   private registryFile: string;
+  public journal: TransactionJournal;
 
   constructor(
     public repoRoot: string,
@@ -74,8 +77,17 @@ export class MetadataStore {
     this.metadataRoot = path.resolve(repoRoot, config.metadata_root);
     this.worktreesDir = path.join(this.metadataRoot, 'worktrees');
     this.experimentsDir = path.join(this.metadataRoot, 'experiments');
-    this.archiveDir = path.join(this.metadataRoot, 'archive');
+    this.archiveDir = path.join(this.metadataRoot, config.archive_dir_name || 'archives');
     this.registryFile = path.join(this.metadataRoot, 'registry.json');
+    this.journal = new TransactionJournal(
+      repoRoot,
+      config.metadata_root,
+      config.journal_dir_name || 'journal'
+    );
+  }
+
+  public getJournal(): TransactionJournal {
+    return this.journal;
   }
 
   public getRegistryPath(): string {

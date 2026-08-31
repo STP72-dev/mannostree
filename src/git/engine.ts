@@ -56,6 +56,15 @@ export class GitEngine {
     }
   }
 
+  public async getHeadCommit(ref: string = 'HEAD'): Promise<string | null> {
+    try {
+      const { stdout } = await this.exec(['rev-parse', ref]);
+      return stdout || null;
+    } catch {
+      return null;
+    }
+  }
+
   public async getCurrentBranch(): Promise<string | null> {
     try {
       const { stdout } = await this.exec(['branch', '--show-current']);

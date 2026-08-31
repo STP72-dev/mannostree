@@ -131,3 +131,35 @@ Brief summary of implementation accomplishments.
 `;
   fs.writeFileSync(path.join(worktreeFullPath, 'RESULTS.md'), resultsContent, 'utf-8');
 }
+
+export interface MetadataDirScaffoldOptions {
+  repoRoot: string;
+  metadataRoot?: string;
+  journalDirName?: string;
+  archiveDirName?: string;
+  dryRun?: boolean;
+}
+
+export function scaffoldMetadataDirectories(options: MetadataDirScaffoldOptions): void {
+  const {
+    repoRoot,
+    metadataRoot = '.mannostree',
+    journalDirName = 'journal',
+    archiveDirName = 'archives',
+    dryRun = false,
+  } = options;
+
+  if (dryRun) return;
+
+  const baseMetaDir = path.resolve(repoRoot, metadataRoot);
+  const worktreesDir = path.join(baseMetaDir, 'worktrees');
+  const experimentsDir = path.join(baseMetaDir, 'experiments');
+  const journalDir = path.join(baseMetaDir, journalDirName);
+  const archivesDir = path.join(baseMetaDir, archiveDirName);
+
+  for (const dir of [baseMetaDir, worktreesDir, experimentsDir, journalDir, archivesDir]) {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+  }
+}

@@ -23,6 +23,8 @@ describe('Configuration Loader', () => {
     expect(config.worktree_root).toBe('.worktrees');
     expect(config.metadata_root).toBe('.mannostree');
     expect(config.artifact_dir_name).toBe('.task');
+    expect(config.journal_dir_name).toBe('journal');
+    expect(config.archive_dir_name).toBe('archives');
   });
 
   it('loads and validates a valid .mannostree.yml file', () => {

@@ -15,8 +15,8 @@
 
 **Purpose**: Project initialization and directory structure for journal and archive storage
 
-- [ ] T001 Initialize journal and archive directory paths in `src/config/schema.ts`
-- [ ] T002 [P] Create journal and archive directories scaffold helper in `src/artifact/scaffold.ts`
+- [X] T001 Initialize journal and archive directory paths in `src/config/schema.ts`
+- [X] T002 [P] Create journal and archive directories scaffold helper in `src/artifact/scaffold.ts`
 
 ---
 
@@ -24,10 +24,10 @@
 
 **Purpose**: Core type models, validation schemas, and transaction journaling foundation required across all user stories
 
-- [ ] T003 [P] Define core types for HealthStatus, DropStatusReport, TransactionJournalEntry, ArchiveRecord, and ParallelHandoffPackage in `src/types/index.ts`
-- [ ] T004 [P] Implement Zod runtime validation schemas for journal entries, health diagnostics, archives, and handoffs in `src/metadata/schema.ts`
-- [ ] T005 Implement atomic transaction journal logger and snapshot rollback engine in `src/metadata/journal.ts`
-- [ ] T006 Integrate transaction journaling hooks and atomic write locks in `src/metadata/store.ts`
+- [X] T003 [P] Define core types for HealthStatus, DropStatusReport, TransactionJournalEntry, ArchiveRecord, and ParallelHandoffPackage in `src/types/index.ts`
+- [X] T004 [P] Implement Zod runtime validation schemas for journal entries, health diagnostics, archives, and handoffs in `src/metadata/schema.ts`
+- [X] T005 Implement atomic transaction journal logger and snapshot rollback engine in `src/metadata/journal.ts`
+- [X] T006 Integrate transaction journaling hooks and atomic write locks in `src/metadata/store.ts`
 
 **Checkpoint**: Core types, validation schemas, and transaction journal ready — user story implementation can proceed.
 
@@ -40,13 +40,13 @@
 **Independent Test**: Create an experiment with clean and dirty variants. Run `parallel drop` without `--discard-uncommitted --yes`. Verify clean variants are removed, the dirty variant and parent experiment record are preserved, and `parallel drop-status` reports the surviving variant and retry remediation.
 
 ### Tests for User Story 1
-- [ ] T007 [P] [US1] Unit test for strict flag separation (`--force` vs `--discard-uncommitted --yes`) in `tests/unit/flag-safety.test.ts`
-- [ ] T008 [P] [US1] Integration test for partial drop failure, dirty variant preservation, and retry execution in `tests/integration/parallel-drop-safety.test.ts`
+- [X] T007 [P] [US1] Unit test for strict flag separation (`--force` vs `--discard-uncommitted --yes`) in `tests/unit/flag-safety.test.ts`
+- [X] T008 [P] [US1] Integration test for partial drop failure, dirty variant preservation, and retry execution in `tests/integration/parallel-drop-safety.test.ts`
 
 ### Implementation for User Story 1
-- [ ] T009 [US1] Implement per-variant drop execution, dirty-check validation, and partial-survival metadata retention in `src/core/parallel.ts`
-- [ ] T010 [US1] Implement `parallel drop-status` query command and output formatter in `src/cli/commands/parallel.ts`
-- [ ] T011 [US1] Update `parallel drop` CLI command with `--discard-uncommitted`, restricted `--force`, `--dry-run`, and `--retry` flags in `src/cli/commands/parallel.ts`
+- [X] T009 [US1] Implement per-variant drop execution, dirty-check validation, and partial-survival metadata retention in `src/core/parallel.ts`
+- [X] T010 [US1] Implement `parallel drop-status` query command and output formatter in `src/cli/commands/parallel.ts`
+- [X] T011 [US1] Update `parallel drop` CLI command with `--discard-uncommitted`, restricted `--force`, `--dry-run`, and `--retry` flags in `src/cli/commands/parallel.ts`
 
 **Checkpoint**: User Story 1 fully functional and independently testable.
 
@@ -59,13 +59,13 @@
 **Independent Test**: Delete an active worktree folder or branch out-of-band. Run `mannostree doctor`. Verify that the affected experiment is flagged as `BROKEN`, healthy workspaces remain unaffected, and non-destructive repair steps are output.
 
 ### Tests for User Story 2
-- [ ] T012 [P] [US2] Unit test for multi-point health checks and broken state classification in `tests/unit/health-doctor.test.ts`
-- [ ] T013 [P] [US2] Integration test for diagnosing out-of-band filesystem deletions and repair guidance in `tests/integration/doctor-recovery.test.ts`
+- [X] T012 [P] [US2] Unit test for multi-point health checks and broken state classification in `tests/unit/health-doctor.test.ts`
+- [X] T013 [P] [US2] Integration test for diagnosing out-of-band filesystem deletions and repair guidance in `tests/integration/doctor-recovery.test.ts`
 
 ### Implementation for User Story 2
-- [ ] T014 [US2] Implement comprehensive health verification checks (worktree existence, git registration, branch validity, clean status) in `src/core/doctor.ts`
-- [ ] T015 [US2] Add `broken` and `degraded` state transitions and non-destructive repair handlers in `src/core/orchestrator.ts`
-- [ ] T016 [US2] Update `doctor` and `info` CLI commands with detailed health status and recovery advice output in `src/cli/commands/doctor.ts` and `src/cli/commands/info.ts`
+- [X] T014 [US2] Implement comprehensive health verification checks (worktree existence, git registration, branch validity, clean status) in `src/core/doctor.ts`
+- [X] T015 [US2] Add `broken` and `degraded` state transitions and non-destructive repair handlers in `src/core/orchestrator.ts`
+- [X] T016 [US2] Update `doctor` and `info` CLI commands with detailed health status and recovery advice output in `src/cli/commands/doctor.ts` and `src/cli/commands/info.ts`
 
 **Checkpoint**: User Stories 1 and 2 functional and independently testable.
 
@@ -78,13 +78,13 @@
 **Independent Test**: Simulate an interrupted `parallel spawn` by halting execution after writing intent logs. Run `mannostree recover`. Verify that the incomplete transaction is detected, dangling worktrees/branches are identified, and safe rollback or replay succeeds.
 
 ### Tests for User Story 3
-- [ ] T017 [P] [US3] Unit test for transaction intent recording, snapshot capture, and rollback execution in `tests/unit/metadata-journal.test.ts`
-- [ ] T018 [P] [US3] Integration test for recovering interrupted multi-worktree operations in `tests/integration/transaction-recovery.test.ts`
+- [X] T017 [P] [US3] Unit test for transaction intent recording, snapshot capture, and rollback execution in `tests/unit/metadata-journal.test.ts`
+- [X] T018 [P] [US3] Integration test for recovering interrupted multi-worktree operations in `tests/integration/transaction-recovery.test.ts`
 
 ### Implementation for User Story 3
-- [ ] T019 [US3] Implement transaction lifecycle wrappers (`begin`, `commit`, `rollback`, `replay`) in `src/metadata/journal.ts`
-- [ ] T020 [US3] Wrap `parallel spawn`, `parallel drop`, and `archive` operations with atomic transaction logging in `src/core/parallel.ts` and `src/core/orchestrator.ts`
-- [ ] T021 [US3] Implement transaction recovery and audit commands in `src/cli/commands/recover.ts`
+- [X] T019 [US3] Implement transaction lifecycle wrappers (`begin`, `commit`, `rollback`, `replay`) in `src/metadata/journal.ts`
+- [X] T020 [US3] Wrap `parallel spawn`, `parallel drop`, and `archive` operations with atomic transaction logging in `src/core/parallel.ts` and `src/core/orchestrator.ts`
+- [X] T021 [US3] Implement transaction recovery and audit commands in `src/cli/commands/recover.ts`
 
 **Checkpoint**: User Stories 1, 2, and 3 functional and crash-resilient.
 
@@ -97,14 +97,14 @@
 **Independent Test**: Archive an experiment with two variants. Verify worktree directories are safely removed while branches and metadata records are preserved. Run `restore` and verify worktrees are recreated at the target paths with valid Git tracking.
 
 ### Tests for User Story 4
-- [ ] T022 [P] [US4] Unit test for workspace archiving, dirty checks, and restoration validation in `tests/unit/archive-restore.test.ts`
-- [ ] T023 [P] [US4] Integration test for archiving and restoring multi-variant parallel experiments in `tests/integration/archive-restore-integration.test.ts`
+- [X] T022 [P] [US4] Unit test for workspace archiving, dirty checks, and restoration validation in `tests/unit/archive-restore.test.ts`
+- [X] T023 [P] [US4] Integration test for archiving and restoring multi-variant parallel experiments in `tests/integration/archive-restore-integration.test.ts`
 
 ### Implementation for User Story 4
-- [ ] T024 [US4] Implement worktree de-allocation, snapshot archival, and metadata state transitions in `src/core/orchestrator.ts`
-- [ ] T025 [US4] Implement worktree re-attachment, path conflict detection, and restoration validation in `src/core/orchestrator.ts`
-- [ ] T026 [US4] Implement `archive` and `restore` CLI commands in `src/cli/commands/archive.ts`
-- [ ] T027 [US4] Update `list` command in `src/cli/commands/list.ts` to hide archived workspaces by default and support `--archived` flag
+- [X] T024 [US4] Implement worktree de-allocation, snapshot archival, and metadata state transitions in `src/core/orchestrator.ts`
+- [X] T025 [US4] Implement worktree re-attachment, path conflict detection, and restoration validation in `src/core/orchestrator.ts`
+- [X] T026 [US4] Implement `archive` and `restore` CLI commands in `src/cli/commands/archive.ts`
+- [X] T027 [US4] Update `list` command in `src/cli/commands/list.ts` to hide archived workspaces by default and support `--archived` flag
 
 **Checkpoint**: User Stories 1, 2, 3, and 4 functional and independently testable.
 
@@ -117,12 +117,12 @@
 **Independent Test**: Run comparison and select a winner for an experiment. Run `parallel handoff`. Verify `.task/parallel-handoff.md` and `.mannostree/experiments/<feature>-handoff.json` are created containing the complete scorecard and preserved loser branch list without deleting any branches.
 
 ### Tests for User Story 5
-- [ ] T028 [P] [US5] Unit test for parallel handoff report generation and loser variant preservation in `tests/unit/parallel-handoff.test.ts`
-- [ ] T029 [P] [US5] Integration test for end-to-end parallel comparison, winner pick, and handoff generation in `tests/integration/parallel-handoff.test.ts`
+- [X] T028 [P] [US5] Unit test for parallel handoff report generation and loser variant preservation in `tests/unit/parallel-handoff.test.ts`
+- [X] T029 [P] [US5] Integration test for end-to-end parallel comparison, winner pick, and handoff generation in `tests/integration/parallel-handoff.test.ts`
 
 ### Implementation for User Story 5
-- [ ] T030 [US5] Implement parallel handoff compiler, scorecard aggregator, and markdown generator in `src/core/handoff.ts`
-- [ ] T031 [US5] Implement `parallel handoff` CLI command and register under parallel command suite in `src/cli/commands/handoff.ts` and `src/cli/commands/parallel.ts`
+- [X] T030 [US5] Implement parallel handoff compiler, scorecard aggregator, and markdown generator in `src/core/handoff.ts`
+- [X] T031 [US5] Implement `parallel handoff` CLI command and register under parallel command suite in `src/cli/commands/handoff.ts` and `src/cli/commands/parallel.ts`
 
 **Checkpoint**: All user stories (1 through 5) functional and integrated.
 
@@ -132,11 +132,11 @@
 
 **Purpose**: Type safety, full-suite verification, quickstart validation, and documentation alignment
 
-- [ ] T032 [P] Export all new types and commands from `src/index.ts` and `src/cli/index.ts`
-- [ ] T033 Run TypeScript compilation and strict lint checks via `npm run lint`
-- [ ] T034 Run full test suite with coverage reporting via `npm run coverage`
-- [ ] T035 [P] Update command documentation in `docs/` and `README.md` reflecting new commands and flags
-- [ ] T036 Validate operator scenarios per `specs/001-safety-lifecycle-recovery/quickstart.md`
+- [X] T032 [P] Export all new types and commands from `src/index.ts` and `src/cli/index.ts`
+- [X] T033 Run TypeScript compilation and strict lint checks via `npm run lint`
+- [X] T034 Run full test suite with coverage reporting via `npm run coverage`
+- [X] T035 [P] Update command documentation in `docs/` and `README.md` reflecting new commands and flags
+- [X] T036 Validate operator scenarios per `specs/001-safety-lifecycle-recovery/quickstart.md`
 
 ---
 

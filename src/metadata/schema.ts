@@ -158,3 +158,118 @@ export const ExperimentRecordSchema = z.object({
   plan_mode: z.enum(['shared', 'isolated']).default('shared'),
 });
 
+export const TransactionIntentSchema = z.object({
+  file_path: z.string(),
+  action: z.enum(['create', 'update', 'delete']),
+  previous_snapshot: z.string().optional(),
+  next_snapshot: z.string().optional(),
+});
+
+export const TransactionJournalEntrySchema = z.object({
+  transaction_id: z.string(),
+  operation: z.enum(['spawn', 'drop', 'pick', 'archive', 'restore', 'recover', 'parallel_spawn', 'parallel_drop']),
+  entity_type: z.enum(['worktree', 'experiment', 'registry']),
+  entity_id: z.string(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  state: z.enum(['in_flight', 'committed', 'rolled_back', 'failed']),
+  intents: z.array(TransactionIntentSchema),
+  error: z
+    .object({
+      code: z.string(),
+      message: z.string(),
+      stack: z.string().optional(),
+    })
+    .optional(),
+});
+
+export const HealthCheckResultSchema = z.object({
+  check_id: z.enum([
+    'worktree_dir_exists',
+    'git_worktree_registered',
+    'git_branch_exists',
+    'metadata_record_valid',
+    'clean_git_status',
+  ]),
+  passed: z.boolean(),
+  severity: z.enum(['critical', 'warning', 'info']),
+  message: z.string(),
+  remediation: z.string().optional(),
+});
+
+export const HealthDiagnosticSchema = z.object({
+  status: z.enum(['healthy', 'degraded', 'broken']),
+  last_verified_at: z.string(),
+  checks: z.array(HealthCheckResultSchema),
+  recommended_actions: z.array(z.string()),
+});
+
+export const VariantDropOutcomeSchema = z.object({
+  variant_id: z.string(),
+  worktree_path: z.string(),
+  branch: z.string(),
+  status: z.enum(['dropped', 'failed', 'preserved_winner', 'preserved_dirty']),
+  error: z.string().optional(),
+  remediation: z.string().optional(),
+});
+
+export const DropStatusReportSchema = z.object({
+  feature: z.string(),
+  experiment_id: z.string(),
+  timestamp: z.string(),
+  dry_run: z.boolean(),
+  total_variants: z.number(),
+  dropped_count: z.number(),
+  surviving_count: z.number(),
+  experiment_record_retained: z.boolean(),
+  variants: z.array(VariantDropOutcomeSchema),
+  next_steps: z.array(z.string()),
+});
+
+export const ArchiveRecordSchema = z.object({
+  entity_id: z.string(),
+  entity_type: z.enum(['worktree', 'experiment']),
+  archived_at: z.string(),
+  base_branch: z.string(),
+  head_sha: z.string(),
+  original_worktree_path: z.string(),
+  branch_name: z.string(),
+  metadata_snapshot_path: z.string(),
+  artifacts: z.array(z.string()),
+});
+
+export const VariantComparisonSummarySchema = z.object({
+  variant_id: z.string(),
+  branch: z.string(),
+  ahead: z.number(),
+  behind: z.number(),
+  files_changed: z.number(),
+  insertions: z.number(),
+  deletions: z.number(),
+  score: z.number().optional(),
+});
+
+export const ParallelHandoffPackageSchema = z.object({
+  handoff_id: z.string(),
+  feature: z.string(),
+  base_branch: z.string(),
+  created_at: z.string(),
+  winner: z.object({
+    variant_id: z.string(),
+    branch: z.string(),
+    head_sha: z.string(),
+    selection_rationale: z.string(),
+  }),
+  comparison_scorecard: z.array(VariantComparisonSummarySchema),
+  preserved_losers: z.array(
+    z.object({
+      variant_id: z.string(),
+      branch: z.string(),
+      head_sha: z.string(),
+      archived_or_active: z.enum(['active', 'archived']),
+    })
+  ),
+  pr_summary_markdown: z.string(),
+  artifact_path: z.string(),
+});
+
