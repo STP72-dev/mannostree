@@ -73,8 +73,11 @@ export interface ParallelDropOptions {
 export interface ParallelDropResult {
   feature: string;
   dropped_variants: string[];
+  surviving_variants: string[];
+  failed_variants: Array<{ id: string; error: string }>;
+  winner_protected?: string | null;
   experiment_deleted: boolean;
-  experiment: ExperimentRecord;
+  experiment: ExperimentRecord | null;
 }
 
 export class ParallelEngine {
@@ -378,42 +381,79 @@ export class ParallelEngine {
       );
     }
 
-    const droppedVariants: string[] = [];
+    const protectWinner = this.config.cleanup?.protect_winner !== false;
+    let winnerProtected: string | null = null;
+    let candidateVariants = [...experiment.variants];
 
-    if (!yes && !dryRun) {
+    if (protectWinner && !force && experiment.winner) {
+      if (candidateVariants.includes(experiment.winner)) {
+        winnerProtected = experiment.winner;
+        candidateVariants = candidateVariants.filter((vId) => vId !== experiment.winner);
+      }
+    }
+
+    if (!yes || dryRun) {
       return {
         feature: sanitizedFeature,
-        dropped_variants: experiment.variants,
+        dropped_variants: candidateVariants,
+        surviving_variants: winnerProtected ? [winnerProtected] : [],
+        failed_variants: [],
+        winner_protected: winnerProtected,
         experiment_deleted: false,
         experiment,
       };
     }
 
-    if (!dryRun) {
-      for (const vId of experiment.variants) {
-        try {
-          await this.dropWorktreeFn(vId, {
-            force,
-            keepBranch,
-            archive,
-            dryRun: false,
-          });
-          droppedVariants.push(vId);
-        } catch {
-          // continue dropping remaining variants
-        }
-      }
+    const droppedVariants: string[] = [];
+    const failedVariants: Array<{ id: string; error: string }> = [];
+    const survivingVariants: string[] = [];
 
-      await this.store.deleteExperiment(sanitizedFeature);
-    } else {
-      droppedVariants.push(...experiment.variants);
+    if (winnerProtected) {
+      survivingVariants.push(winnerProtected);
     }
 
-    return {
-      feature: sanitizedFeature,
-      dropped_variants: droppedVariants,
-      experiment_deleted: !dryRun && yes,
-      experiment,
-    };
+    for (const vId of candidateVariants) {
+      try {
+        await this.dropWorktreeFn(vId, {
+          force,
+          keepBranch,
+          archive,
+          dryRun: false,
+        });
+        droppedVariants.push(vId);
+      } catch (err: any) {
+        failedVariants.push({
+          id: vId,
+          error: err.message || 'Failed to drop variant worktree',
+        });
+        survivingVariants.push(vId);
+      }
+    }
+
+    if (survivingVariants.length === 0) {
+      await this.store.deleteExperiment(sanitizedFeature);
+      return {
+        feature: sanitizedFeature,
+        dropped_variants: droppedVariants,
+        surviving_variants: [],
+        failed_variants: [],
+        winner_protected: null,
+        experiment_deleted: true,
+        experiment: null,
+      };
+    } else {
+      experiment.variants = survivingVariants;
+      experiment.updated_at = new Date().toISOString();
+      await this.store.saveExperiment(experiment);
+      return {
+        feature: sanitizedFeature,
+        dropped_variants: droppedVariants,
+        surviving_variants: survivingVariants,
+        failed_variants: failedVariants,
+        winner_protected: winnerProtected,
+        experiment_deleted: false,
+        experiment,
+      };
+    }
   }
 }

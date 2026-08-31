@@ -1041,16 +1041,31 @@ export class MannostreeOrchestrator {
   public async parallelDrop(
     options: ParallelDropOptions
   ): Promise<CommandOutput<ParallelDropResult>> {
+    const isDryRun = !options.yes || !!options.dryRun;
     const res = await this.parallelEngine.dropExperiment(options);
+
+    const warnings: string[] = [];
+    if (!options.yes && !options.dryRun) {
+      warnings.push(`Drop experiment preview only. Add --yes to delete all variants of '${options.feature}'.`);
+    }
+    if (res.winner_protected) {
+      warnings.push(`Winner '${res.winner_protected}' is protected from deletion (pass --force to override).`);
+    }
+
+    const errors: string[] = [];
+    if (res.failed_variants.length > 0) {
+      for (const fail of res.failed_variants) {
+        errors.push(`Failed to drop variant '${fail.id}': ${fail.error}`);
+      }
+    }
+
     return {
       command: 'parallel drop',
-      ok: true,
-      dry_run: !!options.dryRun,
+      ok: res.failed_variants.length === 0,
+      dry_run: isDryRun,
       result: res,
-      warnings: !options.yes && !options.dryRun
-        ? [`Drop experiment preview only. Add --yes to delete all variants of '${options.feature}'.`]
-        : [],
-      errors: [],
+      warnings,
+      errors,
     };
   }
 

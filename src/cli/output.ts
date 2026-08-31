@@ -1,6 +1,6 @@
 import YAML from 'yaml';
 import chalk from 'chalk';
-import { CommandOutput, GlobalOptions, WorktreeRecord, ExperimentRecord } from '../types/index.js';
+import { CommandOutput, GlobalOptions, WorktreeRecord, ExperimentRecord, ExitCode } from '../types/index.js';
 import { DoctorReport } from '../core/doctor.js';
 import { SetupApplyResult, EnvApplyResult } from '../core/setup.js';
 import {
@@ -16,6 +16,10 @@ export function formatOutput<T>(
   options: GlobalOptions,
   humanFormatter?: (data: T, dryRun: boolean) => string
 ): void {
+  if (!output.ok) {
+    process.exitCode = ExitCode.GENERIC_FAILURE;
+  }
+
   if (options.quiet) {
     return;
   }
@@ -385,14 +389,33 @@ export function formatParallelDropResult(
       ? chalk.yellow(`Plan: would drop experiment '${result.feature}' and ${result.dropped_variants.length} variant worktree(s)`)
       : result.experiment_deleted
         ? chalk.green(`✔ Successfully dropped experiment '${result.feature}' and ${result.dropped_variants.length} variant(s)`)
-        : chalk.yellow(`Found ${result.dropped_variants.length} variant(s) in experiment '${result.feature}'`),
+        : chalk.yellow(`Drop experiment '${result.feature}' completed with surviving variants:`),
   ];
 
-  for (const v of result.dropped_variants) {
-    lines.push(`  - ${chalk.bold(v)}`);
+  if (result.dropped_variants.length > 0) {
+    lines.push(chalk.bold('\nDropped Variants:'));
+    for (const v of result.dropped_variants) {
+      lines.push(`  - ${chalk.green('✔')} ${chalk.bold(v)}`);
+    }
   }
 
-  if (!dryRun && !result.experiment_deleted) {
+  if (result.surviving_variants.length > 0) {
+    lines.push(chalk.bold('\nSurviving Variants:'));
+    for (const v of result.surviving_variants) {
+      const isWinner = v === result.winner_protected;
+      const tag = isWinner ? chalk.cyan('(protected winner)') : chalk.yellow('(failed to drop)');
+      lines.push(`  - ${chalk.yellow('⚠')} ${chalk.bold(v)} ${tag}`);
+    }
+  }
+
+  if (result.failed_variants.length > 0) {
+    lines.push(chalk.bold('\nErrors:'));
+    for (const fail of result.failed_variants) {
+      lines.push(`  - ${chalk.red(fail.id)}: ${fail.error}`);
+    }
+  }
+
+  if (dryRun) {
     lines.push(chalk.dim('\nTo execute deletion of all variant worktrees and branches, pass `--yes`.'));
   }
 

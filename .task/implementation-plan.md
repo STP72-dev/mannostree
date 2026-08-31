@@ -1,23 +1,36 @@
-# Implementation Plan: Parallel Experiment Lifecycle Commands (`parallel list`, `parallel drop`)
+# Implementation Plan: Parallel Lifecycle Safety, Partial-Failure Handling, & Winner Protection
 
 ## Overview
-Implement `listExperiments` and `dropExperiment` in `src/core/parallel.ts`, wire them into `MannostreeOrchestrator`, add CLI commands `parallel list` and `parallel drop`, and verify with unit/integration tests.
+Hardens `parallel drop` and `ParallelEngine` against partial failures, enforces winner protection policy, accurately models dry-run/preview envelope semantics, and guarantees atomic metadata consistency.
 
-## Changes
+## Tasks
 
-### 1. `src/core/parallel.ts`
-- Add `listExperiments(status?: string): Promise<ExperimentRecord[]>`.
-- Add `dropExperiment(options: ParallelDropOptions): Promise<ParallelDropResult>`.
+### 1. `ParallelDropResult` & `ParallelEngine.dropExperiment` Refactoring
+- Expand `ParallelDropResult` with `surviving_variants`, `failed_variants`, `winner_protected`, and nullable `experiment`.
+- Implement winner protection when `config.cleanup?.protect_winner !== false && !force`.
+- Attempt drop per candidate variant; capture individual failures without throwing unhandled exceptions.
+- If any variant survives:
+  - Synchronize `experiment.variants = surviving_variants`.
+  - Save updated experiment record to `.mannostree/experiments/<feature>.json`.
+- Only delete experiment record when 100% of variants are removed.
 
-### 2. `src/core/orchestrator.ts`
-- Add `parallelList` and `parallelDrop`.
+### 2. Orchestrator Envelope & Output Formatting
+- In `orchestrator.parallelDrop`: Set `dry_run: !options.yes || !!options.dryRun`.
+- In `src/cli/output.ts`: Enhance `formatParallelDropResult` to report protected winners and failure reasons.
 
-### 3. `src/cli/output.ts`
-- Add `formatParallelListResult` and `formatParallelDropResult`.
+### 3. Comprehensive Testing & Whole-Project Coverage
+- Add unit tests in `tests/unit/parallel.test.ts` for preview envelope, dirty variant failure, partial survival, winner protection, and `--force` override.
+- Run `npm run coverage` and record true whole-project coverage totals.
 
-### 4. `src/cli/commands/parallel.ts`
-- Register `parallel list` and `parallel drop` subcommands.
+---
 
-### 5. Automated Tests
-- Unit tests in `tests/unit/parallel.test.ts`.
-- Integration tests in `tests/integration/phase4.test.ts`.
+## Acceptance Traceability Matrix
+
+| Requirement | Implementation Component | Test Suite |
+|-------------|--------------------------|------------|
+| Preview mode reports `dry_run: true` | `orchestrator.parallelDrop` | `tests/unit/parallel.test.ts` |
+| Partial failure retains surviving variants | `ParallelEngine.dropExperiment` | `tests/unit/parallel.test.ts` |
+| Experiment record not deleted on partial failure | `ParallelEngine.dropExperiment` | `tests/unit/parallel.test.ts` |
+| Winner protected when `protect_winner: true` | `ParallelEngine.dropExperiment` | `tests/unit/parallel.test.ts` |
+| Winner dropped with `--force` | `ParallelEngine.dropExperiment` | `tests/unit/parallel.test.ts` |
+| Clean drop deletes experiment record | `ParallelEngine.dropExperiment` | `tests/integration/phase4.test.ts` |

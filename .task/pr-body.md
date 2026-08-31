@@ -1,22 +1,20 @@
-# Pull Request: Mannostree Complete Developer Workspace Lifecycle Manager (Phases 1 - 5 + Release Readiness)
+# Parallel Lifecycle Safety: Truthful Previews, Partial Failure Resilience, Winner Protection, & Non-Zero Exit Codes
 
 ## Summary
-Delivers the complete production-grade implementation of **Mannostree**, including all five core architectural phases plus post-MVP release readiness, code coverage measurement, and verified GitHub CLI publishing adapters.
+Hardens the `parallel drop` lifecycle command and CLI error signaling:
+1. **Non-Zero Exit Code on Failed Output**: When an envelope reports `ok: false` (such as `parallel drop` partial failure), `formatOutput` sets `process.exitCode = ExitCode.GENERIC_FAILURE` (1) ensuring automation and CI scripts catch errors.
+2. **Truthful Preview Envelope**: `parallel drop` without `--yes` explicitly emits `dry_run: true` in the output envelope.
+3. **Partial-Failure Resilience**: If any variant drop fails (such as dirty uncommitted changes without `--force`), the experiment record is **NOT deleted**. Instead, `experiment.variants` is synchronized to retain only the surviving variant IDs, leaving a valid audit trail for `doctor` and `recover`.
+4. **Winner Protection Policy**: Adheres to `config.cleanup.protect_winner` by preserving winning variants from mass deletion during `parallel drop` unless `--force` is supplied.
+5. **Enhanced CLI Output**: Reports dropped variants, surviving variants, protected winners, and failure errors with clear terminal indicators.
 
-## Completed Capabilities
-- **Phase 1: Foundation & Lifecycle**: Config validation (`.mannostree.yml`), atomic split metadata store (`registry.json`, `worktrees/<id>.json`), explicit base resolution, artifact scaffolding, and `spawn`, `list`, `info`, `drop`.
-- **Phase 2: Operational Safety & Diagnostics**: Ahead/behind status tracking (`status`), conflict-aborting base sync (`sync`), system health diagnostics (`doctor`), multi-gate bulk cleanup (`clean`), and targeted recovery (`recover`).
-- **Phase 3: Setup & Profiles**: Profile dependency bootstrapping (`setup`), environment file policy handling (`env`), and in-worktree execution (`exec`).
-- **Phase 4: Parallel Variants**: Multi-variant generation (`parallel spawn`), side-by-side metric comparison (`parallel compare`), and explicit winner selection without auto-merge (`parallel pick`).
-- **Phase 5: Artifacts & Publishing**: Artifact-driven PR body generation (`pr`), GitHub issue linking (`issue`), artifact completeness auditing (`task`), and agent handoff packages (`handoff`).
-- **Post-MVP Release Readiness**: Injected `GhAdapter` for safe `gh pr create` binary execution, unit/integration verification of the `--push` publishing flow, and `@vitest/coverage-v8` automated code coverage measurement.
-
-## Verification & Quality Gates
-- **Static Analysis**: `npm run lint` (`tsc --noEmit`) → **0 errors**.
-- **Build**: `npm run build` (`tsc`) → **Clean compilation to `dist/`**.
-- **Automated Tests**: `npm run coverage` (`vitest run --coverage`) → **57 / 57 tests passed across 21 test suites** (1.15s).
-- **Independent Review**: Verdict **PASSED** with all safety invariants verified.
-
-## Safety & Publishing Policy
-- **Publishing Mode**: `prepare-only` (local generation by default; remote operations require explicit `--push`).
-- **Auto-Merge**: **Strictly disabled by hard policy**.
+## Quality & Validation Totals
+- `npm run lint`: **PASSED** (0 errors)
+- `npm run build`: **PASSED** (clean compilation)
+- `npm run coverage`: **PASSED** (62/62 tests passing across 21 test suites in 1.18s)
+- **Whole-Project Coverage Totals**:
+  - Statements: **56.51%** (1483 / 2624 lines)
+  - Branches: **65.37%** (268 / 410 branches)
+  - Functions: **89.71%** (61 / 68 functions)
+  - Lines: **56.51%** (1483 / 2624 lines)
+- **Review Verdict**: **PASSED**

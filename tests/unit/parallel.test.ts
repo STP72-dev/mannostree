@@ -177,12 +177,13 @@ describe('Parallel Engine', () => {
     expect(fs.existsSync(v1Path)).toBe(true);
     expect(fs.existsSync(v2Path)).toBe(true);
 
-    // Preview without yes
+    // Preview without yes: dry_run is true
     const previewRes = await orchestrator.parallelDrop({
       feature: 'drop-test',
       yes: false,
     });
     expect(previewRes.ok).toBe(true);
+    expect(previewRes.dry_run).toBe(true);
     expect(previewRes.result?.experiment_deleted).toBe(false);
     expect(fs.existsSync(v1Path)).toBe(true);
 
@@ -193,11 +194,109 @@ describe('Parallel Engine', () => {
       force: true,
     });
     expect(dropRes.ok).toBe(true);
+    expect(dropRes.dry_run).toBe(false);
     expect(dropRes.result?.experiment_deleted).toBe(true);
     expect(fs.existsSync(v1Path)).toBe(false);
     expect(fs.existsSync(v2Path)).toBe(false);
 
     const checkExp = await orchestrator.store.getExperiment('drop-test');
     expect(checkExp).toBeNull();
+  });
+
+  it('protects winner variant during parallel drop unless force is specified', async () => {
+    await orchestrator.parallelSpawn({
+      feature: 'winner-protect',
+      count: 2,
+      baseBranch: 'main',
+    });
+
+    const v1Path = path.join(tempRepo, '.worktrees', 'winner-protect-v1');
+    const v2Path = path.join(tempRepo, '.worktrees', 'winner-protect-v2');
+
+    // Clean worktrees by committing scaffold files
+    execSync('git add . && git commit -m "Scaffold files"', { cwd: v1Path });
+    execSync('git add . && git commit -m "Scaffold files"', { cwd: v2Path });
+
+    // Pick v1 as winner
+    await orchestrator.parallelPick({
+      feature: 'winner-protect',
+      winner: 'v1',
+    });
+
+    // Drop without force: v2 should be dropped, v1 (winner) protected
+    const dropRes = await orchestrator.parallelDrop({
+      feature: 'winner-protect',
+      yes: true,
+      force: false,
+    });
+
+    expect(dropRes.ok).toBe(true);
+    expect(dropRes.result?.winner_protected).toBe('experiment-winner-protect-v1');
+    expect(dropRes.result?.dropped_variants).toContain('experiment-winner-protect-v2');
+    expect(dropRes.result?.surviving_variants).toContain('experiment-winner-protect-v1');
+    expect(dropRes.result?.experiment_deleted).toBe(false);
+
+    expect(fs.existsSync(v1Path)).toBe(true);
+    expect(fs.existsSync(v2Path)).toBe(false);
+
+    // Experiment record should still exist and list v1 as sole surviving variant
+    const exp = await orchestrator.store.getExperiment('winner-protect');
+    expect(exp).not.toBeNull();
+    expect(exp?.variants).toEqual(['experiment-winner-protect-v1']);
+
+    // Now drop with force: should drop winner and delete experiment record
+    const forceDropRes = await orchestrator.parallelDrop({
+      feature: 'winner-protect',
+      yes: true,
+      force: true,
+    });
+
+    expect(forceDropRes.ok).toBe(true);
+    expect(forceDropRes.result?.experiment_deleted).toBe(true);
+    expect(fs.existsSync(v1Path)).toBe(false);
+
+    const checkExp = await orchestrator.store.getExperiment('winner-protect');
+    expect(checkExp).toBeNull();
+  });
+
+  it('handles partial drop failure on dirty variant without deleting experiment record', async () => {
+    await orchestrator.parallelSpawn({
+      feature: 'dirty-fail-test',
+      count: 2,
+      baseBranch: 'main',
+    });
+
+    const v1Path = path.join(tempRepo, '.worktrees', 'dirty-fail-test-v1');
+    const v2Path = path.join(tempRepo, '.worktrees', 'dirty-fail-test-v2');
+
+    // Clean v1 by committing scaffold files
+    execSync('git add . && git commit -m "Scaffold files"', { cwd: v1Path });
+
+    // Make v2 dirty by adding uncommitted change
+    fs.writeFileSync(path.join(v2Path, 'dirty.txt'), 'uncommitted content\n', 'utf-8');
+
+    // Drop without force
+    const dropRes = await orchestrator.parallelDrop({
+      feature: 'dirty-fail-test',
+      yes: true,
+      force: false,
+    });
+
+    // Should report partial failure
+    expect(dropRes.ok).toBe(false);
+    expect(dropRes.result?.dropped_variants).toContain('experiment-dirty-fail-test-v1');
+    expect(dropRes.result?.failed_variants.length).toBe(1);
+    expect(dropRes.result?.failed_variants[0].id).toBe('experiment-dirty-fail-test-v2');
+    expect(dropRes.result?.surviving_variants).toContain('experiment-dirty-fail-test-v2');
+    expect(dropRes.result?.experiment_deleted).toBe(false);
+
+    // v1 is gone, v2 remains
+    expect(fs.existsSync(v1Path)).toBe(false);
+    expect(fs.existsSync(v2Path)).toBe(true);
+
+    // Experiment record should still exist with surviving v2
+    const exp = await orchestrator.store.getExperiment('dirty-fail-test');
+    expect(exp).not.toBeNull();
+    expect(exp?.variants).toEqual(['experiment-dirty-fail-test-v2']);
   });
 });

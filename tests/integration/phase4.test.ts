@@ -87,4 +87,40 @@ artifact_dir_name: .task
     expect(dropParsed.ok).toBe(true);
     expect(dropParsed.result.experiment_deleted).toBe(true);
   });
+
+  it('exits with non-zero code when parallel drop encounters partial failure', () => {
+    // 1. Parallel spawn
+    execSync(
+      `node ${binPath} parallel spawn auth-fail-test -n 2 -b main --json`,
+      { cwd: tempRepo, encoding: 'utf-8' }
+    );
+
+    const v1Path = path.join(tempRepo, '.worktrees', 'auth-fail-test-v1');
+    const v2Path = path.join(tempRepo, '.worktrees', 'auth-fail-test-v2');
+
+    // Clean v1 by committing scaffold files
+    execSync('git add . && git commit -m "Scaffold files"', { cwd: v1Path });
+
+    // Make v2 dirty
+    fs.writeFileSync(path.join(v2Path, 'dirty.txt'), 'dirty content\n', 'utf-8');
+
+    // Drop without --force should fail on v2 and exit with non-zero code
+    let exitCode = 0;
+    let stdout = '';
+    try {
+      stdout = execSync(
+        `node ${binPath} parallel drop auth-fail-test --yes --json`,
+        { cwd: tempRepo, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+      );
+    } catch (err: any) {
+      exitCode = err.status;
+      stdout = err.stdout ? err.stdout.toString() : '';
+    }
+
+    expect(exitCode).toBe(1);
+    const parsed = JSON.parse(stdout);
+    expect(parsed.ok).toBe(false);
+    expect(parsed.errors.length).toBeGreaterThan(0);
+    expect(parsed.result.surviving_variants).toContain('experiment-auth-fail-test-v2');
+  });
 });
