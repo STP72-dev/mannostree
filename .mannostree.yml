@@ -1,0 +1,48 @@
+version: 1
+
+default_base_branch: main
+worktree_root: .worktrees
+metadata_root: .mannostree
+artifact_dir_name: .task
+
+base_branch_resolution:
+  order:
+    - cli
+    - profile
+    - config
+    - repo
+    - remote
+  forbid_current_branch_as_base: true
+
+profiles:
+  default:
+    install_commands: []
+    env_mode: skip
+    validation_commands: []
+  node:
+    install_commands:
+      - npm ci
+    env_mode: skip
+    env_files:
+      - .env
+      - .env.local
+    validation_commands:
+      - npm test
+
+cleanup:
+  default_dry_run: true
+  stale_days: 30
+  protect_winner: true
+  archive_on_drop: true
+
+parallel:
+  max_variants: 5
+  require_shared_base: true
+  require_same_profile: true
+  default_plan_mode: shared
+
+publish:
+  default_remote: origin
+  default_draft: true
+  push_on_pr_create: false
+  pr_body_source: artifacts
