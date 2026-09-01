@@ -19,6 +19,15 @@ import {
 import { PublishEngine, PrOptions, PrResult, GhExecutor } from './publish.js';
 import { TaskEngine, TaskValidationResult, HandoffReport } from './task.js';
 import { ParallelHandoffEngine } from './handoff.js';
+import { AgentRunner } from './agent-runner.js';
+
+import { QualityGatesRunner } from './quality-gates.js';
+import {
+  parseTaskContractMarkdown,
+  validateContractFulfillment,
+  compileScorecard,
+  generateScorecardMarkdown,
+} from './contract.js';
 import {
   ArchiveRecord,
   CommandOutput,
@@ -29,7 +38,16 @@ import {
   MannostreeError,
   ParallelHandoffPackage,
   WorktreeRecord,
+  AgentDispatchOptions,
+  AgentVerifyOptions,
+  AgentCancelOptions,
+  AgentStatusOptions,
+  AgentSessionRecord,
+  FulfillmentVerificationReport,
+  ExecutionScorecard,
+  QualityGateCommand,
 } from '../types/index.js';
+
 
 export interface SpawnOptions {
   name: string;
@@ -113,6 +131,9 @@ export class MannostreeOrchestrator {
   public parallelEngine: ParallelEngine;
   public publishEngine: PublishEngine;
   public taskEngine: TaskEngine;
+  public parallelHandoffEngine: ParallelHandoffEngine;
+  public agentRunner: AgentRunner;
+  public qualityGatesRunner: QualityGatesRunner;
 
   constructor(
     public repoRoot: string,
@@ -140,8 +161,10 @@ export class MannostreeOrchestrator {
       this.store,
       this.parallelEngine
     );
+    this.agentRunner = new AgentRunner(repoRoot, this.store, config);
+    this.qualityGatesRunner = new QualityGatesRunner();
   }
-  public parallelHandoffEngine: ParallelHandoffEngine;
+
 
   public getProfile(name: string = 'default'): ProfileConfig {
     return (
@@ -1412,6 +1435,233 @@ export class MannostreeOrchestrator {
       errors: [],
     };
   }
+
+  public async agentDispatch(
+    options: AgentDispatchOptions
+  ): Promise<CommandOutput<{ sessions: AgentSessionRecord[] }>> {
+    const { target, parallel = false, dryRun = false } = options;
+
+    const sessions: AgentSessionRecord[] = [];
+
+    // Check if target is experiment
+    const experiment = await this.store.getExperiment(target);
+    if (experiment && (parallel || options.parallel)) {
+      for (const variantId of experiment.variants) {
+        const session = await this.agentRunner.dispatchSession({
+          ...options,
+          target: variantId,
+          dryRun,
+        });
+        sessions.push(session);
+      }
+    } else {
+      const session = await this.agentRunner.dispatchSession(options);
+      sessions.push(session);
+    }
+
+    return {
+      command: 'agent dispatch',
+      ok: true,
+      dry_run: !!dryRun,
+      result: { sessions },
+      warnings: [],
+      errors: [],
+    };
+  }
+
+  public async agentStatus(
+    options: AgentStatusOptions = {}
+  ): Promise<CommandOutput<{ sessions: AgentSessionRecord[] }>> {
+    const sessions = await this.agentRunner.getSessionStatus(options.target);
+    return {
+      command: 'agent status',
+      ok: true,
+      dry_run: false,
+      result: { sessions },
+      warnings: [],
+      errors: [],
+    };
+  }
+
+  public async agentVerify(
+    options: AgentVerifyOptions
+  ): Promise<
+    CommandOutput<{
+      report: FulfillmentVerificationReport;
+      scorecard: ExecutionScorecard;
+      scorecard_path: string;
+    }>
+  > {
+    const { target, retries = 0, dryRun = false } = options;
+
+    let record = await this.store.getWorktree(target);
+    if (!record) {
+      // Check if target matches variant in experiment
+      const experiment = await this.store.getExperiment(target);
+      if (experiment && experiment.variants.length > 0) {
+        record = await this.store.getWorktree(experiment.variants[0]);
+      }
+    }
+
+    if (!record) {
+      throw new MannostreeError(
+        `Worktree '${target}' not found in metadata registry.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    const fullPath = path.resolve(this.repoRoot, record.worktree_path);
+    const taskDir = path.join(fullPath, this.config.artifact_dir_name || '.task');
+    const contractPath = path.join(taskDir, 'task-contract.md');
+
+    if (!fs.existsSync(contractPath)) {
+      throw new MannostreeError(
+        `Task contract not found at ${contractPath}. Run 'mannostree agent dispatch' first.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    const contract = parseTaskContractMarkdown(contractPath);
+
+    // Build quality gates list from profile or default
+    const profile = this.getProfile(record.profile);
+    const gates: QualityGateCommand[] = (profile.validation_commands || []).map((cmd, idx) => ({
+      name: `gate_${idx + 1}`,
+      command: cmd,
+      mandatory: true,
+    }));
+
+    // If no validation commands configured, default to passing gate
+    const gateReport = await this.qualityGatesRunner.executeGates(fullPath, gates, { retries });
+    const report = validateContractFulfillment(record.id, contract, gateReport);
+
+    // Compute diff stats
+    let filesChanged = 0;
+    let insertions = 0;
+    let deletions = 0;
+    let changedFiles: string[] = [];
+
+    try {
+      const diffStat = await this.git.getDiffShortStat(record.worktree_path, record.base_branch);
+      filesChanged = diffStat.files_changed;
+      insertions = diffStat.insertions;
+      deletions = diffStat.deletions;
+
+      const diffFilesRaw = await this.git.exec(
+        ['diff', '--name-only', `${record.base_branch}...HEAD`],
+        fullPath
+      );
+      changedFiles = diffFilesRaw.stdout.split('\n').filter((l: string) => l.trim().length > 0);
+    } catch {
+      // ignore diff error if brand new branch
+    }
+
+
+    // Get active or latest session
+    const sessions = await this.store.listSessions({ worktreeId: record.id });
+    const latestSession = sessions[0];
+    const durationSeconds = latestSession?.duration_seconds || 0;
+
+    const scorecard = compileScorecard({
+      worktreeId: record.id,
+      feature: record.feature_name,
+      sessionId: latestSession?.session_id || `session_manual_${Date.now()}`,
+      agentRole: latestSession?.role || 'worker',
+      durationSeconds,
+      gitDiff: {
+        files_changed: filesChanged,
+        insertions,
+        deletions,
+        changed_files: changedFiles,
+      },
+      qualityGates: gateReport,
+      contract,
+    });
+
+    const scorecardPath = path.join(taskDir, 'scorecard.md');
+
+    if (!dryRun) {
+      // Write scorecard markdown
+      fs.writeFileSync(scorecardPath, generateScorecardMarkdown(scorecard), 'utf-8');
+
+      // If rejected, write review.md diagnostics
+      if (report.status === 'rejected') {
+        const reviewPath = path.join(taskDir, 'review.md');
+        const reviewContent = `# Verification Review: ${record.id}
+
+**Status**: **REJECTED**  
+**Verified At**: ${report.verified_at}  
+
+## Unmet Acceptance Criteria
+${report.unmet_criteria.map((c) => `- [ ] ${c.id}: ${c.description}`).join('\n') || '- None'}
+
+## Quality Gate Failures
+${
+  gateReport.results
+    .filter((r) => !r.passed)
+    .map((r) => `### Gate: ${r.gate_name}\nCommand: \`${r.command}\`\nOutput:\n\`\`\`\n${r.stderr || r.stdout}\n\`\`\``)
+    .join('\n\n') || '- None'
 }
+
+## Remediation Steps
+${report.remediation_steps.map((s) => `1. ${s}`).join('\n')}
+`;
+        fs.writeFileSync(reviewPath, reviewContent, 'utf-8');
+      }
+
+      // Update worktree metadata
+      record.lifecycle_state = report.status === 'fulfilled' ? 'VERIFIED' : 'BROKEN';
+      record.status = report.status === 'fulfilled' ? 'validated' : 'fulfillment_rejected';
+      record.updated_at = new Date().toISOString();
+      await this.store.saveWorktree(record);
+
+      // Update session if exists
+      if (latestSession) {
+        latestSession.state = report.status === 'fulfilled' ? 'fulfilled' : 'fulfillment_rejected';
+        latestSession.scorecard_path = path.relative(this.repoRoot, scorecardPath);
+        latestSession.ended_at = new Date().toISOString();
+        await this.store.saveSession(latestSession);
+      }
+    }
+
+    return {
+      command: 'agent verify',
+      ok: report.status === 'fulfilled',
+      dry_run: dryRun,
+      result: {
+        report,
+        scorecard,
+        scorecard_path: path.relative(this.repoRoot, scorecardPath),
+      },
+      warnings: report.status === 'rejected' ? report.remediation_steps : [],
+      errors: [],
+    };
+  }
+
+  public async agentCancel(
+    options: AgentCancelOptions
+  ): Promise<CommandOutput<{ session: AgentSessionRecord | null; cancelled: boolean }>> {
+    if (!options.target) {
+      throw new MannostreeError(
+        'Target worktree or session ID must be specified for agent cancel.',
+        ExitCode.USAGE_ERROR
+      );
+    }
+    const session = await this.agentRunner.cancelSession(options.target, options);
+    return {
+      command: 'agent cancel',
+      ok: true,
+      dry_run: false,
+      result: {
+        session,
+        cancelled: !!session,
+      },
+      warnings: !session ? [`No active session found for target '${options.target}'.`] : [],
+      errors: [],
+    };
+  }
+}
+
+
 
 

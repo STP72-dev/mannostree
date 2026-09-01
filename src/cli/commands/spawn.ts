@@ -11,6 +11,7 @@ export function registerSpawnCommand(program: Command): void {
     .command('spawn <name>')
     .description('Create a single isolated worktree from an explicit base branch')
     .option('-b, --base <base>', 'Explicit base branch (default: resolved from config/remote)')
+    .option('--base-branch <base>', 'Explicit base branch alias')
     .option('--kind <kind>', 'Branch and worktree kind (feature, fix, docs, refactor)', 'feature')
     .option('--no-setup', 'Skip running profile setup commands')
     .option('--env <mode>', 'Env policy mode (copy, link, skip, generate)', 'skip')
@@ -26,7 +27,8 @@ export function registerSpawnCommand(program: Command): void {
 
       const result = await orchestrator.spawn({
         name,
-        baseBranch: cmdOptions.base,
+        baseBranch: cmdOptions.baseBranch || cmdOptions.base,
+
         kind: cmdOptions.kind,
         profile: globalOpts.profile || 'default',
         noSetup: !cmdOptions.setup,

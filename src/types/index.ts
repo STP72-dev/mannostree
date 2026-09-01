@@ -314,6 +314,146 @@ export interface ParallelHandoffPackage {
   artifact_path: string;
 }
 
+export interface AcceptanceCriterion {
+  id: string;
+  description: string;
+  completed: boolean;
+}
+
+export interface TaskContract {
+  title: string;
+  problem_statement: string;
+  scope: string[];
+  out_of_scope: string[];
+  acceptance_criteria: AcceptanceCriterion[];
+  safety_invariants: string[];
+  quality_gates_ref: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type AgentRole = 'planner' | 'worker' | 'verifier' | 'custom' | string;
+export type AgentSessionState =
+  | 'dispatched'
+  | 'planning'
+  | 'working'
+  | 'verifying'
+  | 'fulfilled'
+  | 'fulfillment_rejected'
+  | 'execution_failed'
+  | 'timed_out'
+  | 'cancelled';
+
+export interface AgentSessionRecord {
+  session_id: string;
+  worktree_id: string;
+  feature?: string;
+  role: AgentRole;
+  command: string;
+  state: AgentSessionState;
+  started_at: string;
+  ended_at?: string;
+  duration_seconds?: number;
+  pid?: number;
+  exit_code?: number;
+  error?: string;
+  contract_path: string;
+  scorecard_path?: string;
+}
+
+export interface QualityGateCommand {
+  name: string;
+  command: string;
+  mandatory: boolean;
+  timeout_seconds?: number;
+}
+
+export interface QualityGateExecutionResult {
+  gate_name: string;
+  command: string;
+  passed: boolean;
+  exit_code: number;
+  duration_ms: number;
+  stdout: string;
+  stderr: string;
+}
+
+export interface QualityGateReport {
+  passed: boolean;
+  total_gates: number;
+  passed_gates: number;
+  failed_gates: number;
+  results: QualityGateExecutionResult[];
+}
+
+export interface FulfillmentVerificationReport {
+  worktree_id: string;
+  verified_at: string;
+  status: 'fulfilled' | 'rejected';
+  total_criteria: number;
+  completed_criteria: number;
+  unmet_criteria: AcceptanceCriterion[];
+  quality_gates: QualityGateReport;
+  remediation_steps: string[];
+}
+
+export interface ExecutionScorecard {
+  worktree_id: string;
+  feature?: string;
+  session_id: string;
+  agent_role: AgentRole;
+  generated_at: string;
+  duration_seconds: number;
+  git_diff: {
+    files_changed: number;
+    insertions: number;
+    deletions: number;
+    changed_files: string[];
+  };
+  quality_gates: {
+    passed: boolean;
+    tests_passed?: number;
+    tests_failed?: number;
+    lint_clean: boolean;
+    build_clean: boolean;
+  };
+  fulfillment: {
+    status: 'fulfilled' | 'rejected';
+    criteria_met: number;
+    total_criteria: number;
+  };
+}
+
+export interface AgentDispatchOptions {
+  target: string;
+  role?: AgentRole;
+  command?: string;
+  contract?: string;
+  title?: string;
+  problemStatement?: string;
+  scope?: string[];
+  criteria?: string[];
+  timeoutSeconds?: number;
+  parallel?: boolean;
+  dryRun?: boolean;
+}
+
+export interface AgentVerifyOptions {
+  target: string;
+  retries?: number;
+  dryRun?: boolean;
+}
+
+export interface AgentCancelOptions {
+  target?: string;
+  force?: boolean;
+}
+
+
+export interface AgentStatusOptions {
+  target?: string;
+}
+
 export class MannostreeError extends Error {
   constructor(
     message: string,
@@ -324,3 +464,4 @@ export class MannostreeError extends Error {
     this.name = 'MannostreeError';
   }
 }
+

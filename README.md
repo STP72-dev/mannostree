@@ -344,6 +344,42 @@ mannostree handoff feature-my-feature --to "Senior Reviewer" --notes "All unit a
 
 ---
 
+### Autonomous Agent Contract Runner & Fleet Dispatch
+
+#### 22. Dispatch Worker Agent (`agent dispatch`)
+Dispatch an autonomous agent into an isolated workspace or across all variants of an experiment:
+```bash
+# Single worktree dispatch
+mannostree agent dispatch feature-my-feature \
+  --role worker \
+  --title "Implement Auth Token Refresh" \
+  --criteria "Refresh tokens on expiry" "Unit test timeout behavior"
+
+# Concurrent parallel fleet dispatch
+mannostree agent dispatch auth-experiment --parallel
+```
+
+#### 23. Inspect Agent Status (`agent status`)
+Monitor live agent execution stages, elapsed time, and task criteria progress:
+```bash
+mannostree agent status [target]
+```
+
+#### 24. Verify Contract Fulfillment (`agent verify`)
+Independently verify 100% acceptance criteria checklist completion and automated quality gates:
+```bash
+mannostree agent verify feature-my-feature --retries 1
+```
+
+#### 25. Cancel Active Session (`agent cancel`)
+Safely terminate an agent execution session without losing uncommitted worktree code:
+```bash
+mannostree agent cancel feature-my-feature
+```
+
+
+---
+
 ## Testing & Verification
 
 Run the automated test suite with Vitest:

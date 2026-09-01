@@ -273,3 +273,114 @@ export const ParallelHandoffPackageSchema = z.object({
   artifact_path: z.string(),
 });
 
+export const AcceptanceCriterionSchema = z.object({
+  id: z.string(),
+  description: z.string(),
+  completed: z.boolean(),
+});
+
+export const TaskContractSchema = z.object({
+  title: z.string(),
+  problem_statement: z.string(),
+  scope: z.array(z.string()),
+  out_of_scope: z.array(z.string()),
+  acceptance_criteria: z.array(AcceptanceCriterionSchema),
+  safety_invariants: z.array(z.string()),
+  quality_gates_ref: z.string(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+export const AgentSessionStateSchema = z.enum([
+  'dispatched',
+  'planning',
+  'working',
+  'verifying',
+  'fulfilled',
+  'fulfillment_rejected',
+  'execution_failed',
+  'timed_out',
+  'cancelled',
+]);
+
+export const AgentSessionRecordSchema = z.object({
+  session_id: z.string(),
+  worktree_id: z.string(),
+  feature: z.string().optional(),
+  role: z.string(),
+  command: z.string(),
+  state: AgentSessionStateSchema,
+  started_at: z.string(),
+  ended_at: z.string().optional(),
+  duration_seconds: z.number().optional(),
+  pid: z.number().optional(),
+  exit_code: z.number().optional(),
+  error: z.string().optional(),
+  contract_path: z.string(),
+  scorecard_path: z.string().optional(),
+});
+
+export const QualityGateCommandSchema = z.object({
+  name: z.string(),
+  command: z.string(),
+  mandatory: z.boolean(),
+  timeout_seconds: z.number().optional(),
+});
+
+export const QualityGateExecutionResultSchema = z.object({
+  gate_name: z.string(),
+  command: z.string(),
+  passed: z.boolean(),
+  exit_code: z.number(),
+  duration_ms: z.number(),
+  stdout: z.string(),
+  stderr: z.string(),
+});
+
+export const QualityGateReportSchema = z.object({
+  passed: z.boolean(),
+  total_gates: z.number(),
+  passed_gates: z.number(),
+  failed_gates: z.number(),
+  results: z.array(QualityGateExecutionResultSchema),
+});
+
+export const FulfillmentVerificationReportSchema = z.object({
+  worktree_id: z.string(),
+  verified_at: z.string(),
+  status: z.enum(['fulfilled', 'rejected']),
+  total_criteria: z.number(),
+  completed_criteria: z.number(),
+  unmet_criteria: z.array(AcceptanceCriterionSchema),
+  quality_gates: QualityGateReportSchema,
+  remediation_steps: z.array(z.string()),
+});
+
+export const ExecutionScorecardSchema = z.object({
+  worktree_id: z.string(),
+  feature: z.string().optional(),
+  session_id: z.string(),
+  agent_role: z.string(),
+  generated_at: z.string(),
+  duration_seconds: z.number(),
+  git_diff: z.object({
+    files_changed: z.number(),
+    insertions: z.number(),
+    deletions: z.number(),
+    changed_files: z.array(z.string()),
+  }),
+  quality_gates: z.object({
+    passed: z.boolean(),
+    tests_passed: z.number().optional(),
+    tests_failed: z.number().optional(),
+    lint_clean: z.boolean(),
+    build_clean: z.boolean(),
+  }),
+  fulfillment: z.object({
+    status: z.enum(['fulfilled', 'rejected']),
+    criteria_met: z.number(),
+    total_criteria: z.number(),
+  }),
+});
+
+

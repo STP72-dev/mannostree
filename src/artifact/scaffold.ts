@@ -32,8 +32,9 @@ Describe the core problem, user value, and background context.
 - Explicitly excluded items or future work.
 
 ## Acceptance criteria
-- [ ] Deliverable meets specifications.
-- [ ] Automated tests pass.
+- [ ] AC-001: Deliverable meets specifications.
+- [ ] AC-002: Automated tests pass.
+
 
 ## References
 - Base branch: \`${baseBranch}\`
@@ -137,6 +138,7 @@ export interface MetadataDirScaffoldOptions {
   metadataRoot?: string;
   journalDirName?: string;
   archiveDirName?: string;
+  sessionsDirName?: string;
   dryRun?: boolean;
 }
 
@@ -146,6 +148,7 @@ export function scaffoldMetadataDirectories(options: MetadataDirScaffoldOptions)
     metadataRoot = '.mannostree',
     journalDirName = 'journal',
     archiveDirName = 'archives',
+    sessionsDirName = 'sessions',
     dryRun = false,
   } = options;
 
@@ -156,10 +159,12 @@ export function scaffoldMetadataDirectories(options: MetadataDirScaffoldOptions)
   const experimentsDir = path.join(baseMetaDir, 'experiments');
   const journalDir = path.join(baseMetaDir, journalDirName);
   const archivesDir = path.join(baseMetaDir, archiveDirName);
+  const sessionsDir = path.join(baseMetaDir, sessionsDirName);
 
-  for (const dir of [baseMetaDir, worktreesDir, experimentsDir, journalDir, archivesDir]) {
+  for (const dir of [baseMetaDir, worktreesDir, experimentsDir, journalDir, archivesDir, sessionsDir]) {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
   }
 }
+

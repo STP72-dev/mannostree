@@ -5,6 +5,7 @@ import {
   RegistryRecordSchema,
   WorktreeRecordSchema,
   ExperimentRecordSchema,
+  AgentSessionRecordSchema,
 } from './schema.js';
 import {
   ExitCode,
@@ -12,7 +13,9 @@ import {
   RegistryRecord,
   WorktreeRecord,
   ExperimentRecord,
+  AgentSessionRecord,
 } from '../types/index.js';
+import { TransactionJournal } from './journal.js';
 
 export function writeAtomicJson(filePath: string, data: unknown): void {
   const dir = path.dirname(filePath);
@@ -60,13 +63,12 @@ export function readJson<T>(filePath: string): T {
   }
 }
 
-import { TransactionJournal } from './journal.js';
-
 export class MetadataStore {
   private metadataRoot: string;
   private worktreesDir: string;
   private experimentsDir: string;
   private archiveDir: string;
+  private sessionsDir: string;
   private registryFile: string;
   public journal: TransactionJournal;
 
@@ -78,6 +80,7 @@ export class MetadataStore {
     this.worktreesDir = path.join(this.metadataRoot, 'worktrees');
     this.experimentsDir = path.join(this.metadataRoot, 'experiments');
     this.archiveDir = path.join(this.metadataRoot, config.archive_dir_name || 'archives');
+    this.sessionsDir = path.join(this.metadataRoot, config.sessions_dir_name || 'sessions');
     this.registryFile = path.join(this.metadataRoot, 'registry.json');
     this.journal = new TransactionJournal(
       repoRoot,
@@ -97,6 +100,11 @@ export class MetadataStore {
   public getWorktreeRecordPath(id: string): string {
     return path.join(this.worktreesDir, `${id}.json`);
   }
+
+  public getSessionRecordPath(sessionId: string): string {
+    return path.join(this.sessionsDir, `${sessionId}.json`);
+  }
+
 
   public getExperimentRecordPath(feature: string): string {
     return path.join(this.experimentsDir, `${feature}.json`);
@@ -299,4 +307,67 @@ export class MetadataStore {
 
     return records;
   }
+
+  public async getSession(sessionId: string): Promise<AgentSessionRecord | null> {
+    const filePath = this.getSessionRecordPath(sessionId);
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+
+    const raw = readJson<unknown>(filePath);
+    const parsed = AgentSessionRecordSchema.safeParse(raw);
+    if (!parsed.success) {
+      throw new MannostreeError(
+        `Invalid session record schema for ${sessionId} in ${filePath}:\n${parsed.error.message}`,
+        ExitCode.METADATA_INCONSISTENCY
+      );
+    }
+    return parsed.data as AgentSessionRecord;
+  }
+
+  public async saveSession(record: AgentSessionRecord): Promise<void> {
+    const validated = AgentSessionRecordSchema.safeParse(record);
+    if (!validated.success) {
+      throw new MannostreeError(
+        `Session record validation failed for ${record.session_id}: ${validated.error.message}`,
+        ExitCode.VALIDATION_FAILURE
+      );
+    }
+
+    const filePath = this.getSessionRecordPath(record.session_id);
+    writeAtomicJson(filePath, validated.data);
+  }
+
+  public async listSessions(filter?: { worktreeId?: string; feature?: string }): Promise<AgentSessionRecord[]> {
+    if (!fs.existsSync(this.sessionsDir)) {
+      return [];
+    }
+
+    const files = fs.readdirSync(this.sessionsDir).filter((f) => f.endsWith('.json'));
+    const sessions: AgentSessionRecord[] = [];
+
+    for (const file of files) {
+      const sessionId = file.replace(/\.json$/, '');
+      const session = await this.getSession(sessionId);
+      if (session) {
+        if (filter?.worktreeId && session.worktree_id !== filter.worktreeId) {
+          continue;
+        }
+        if (filter?.feature && session.feature !== filter.feature) {
+          continue;
+        }
+        sessions.push(session);
+      }
+    }
+
+    return sessions.sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
+  }
+
+  public async deleteSession(sessionId: string): Promise<void> {
+    const filePath = this.getSessionRecordPath(sessionId);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  }
 }
+

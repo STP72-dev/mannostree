@@ -52,6 +52,17 @@ export const IntegrationsConfigSchema = z.object({
     .optional(),
 });
 
+export const AgentConfigSchema = z.object({
+  default_command: z.string().default(''),
+  timeout_seconds: z.number().default(1800),
+  env_passthrough: z.array(z.string()).default([]),
+  roles: z.record(z.string()).default({
+    planner: 'Analyze task contract and draft implementation plan in .task/plan.md',
+    worker: 'Implement changes to satisfy all acceptance criteria in .task/task-contract.md',
+    verifier: 'Run quality gates and verify checklist completion in .task/task-contract.md',
+  }),
+});
+
 export const MannostreeConfigSchema = z.object({
   version: z.number().default(1),
   default_base_branch: z.string().default('main'),
@@ -60,6 +71,7 @@ export const MannostreeConfigSchema = z.object({
   artifact_dir_name: z.string().default('.task'),
   journal_dir_name: z.string().default('journal'),
   archive_dir_name: z.string().default('archives'),
+  sessions_dir_name: z.string().default('sessions'),
   base_branch_resolution: BaseBranchResolutionSchema.default({}),
   profiles: z.record(ProfileConfigSchema).default({
     default: {
@@ -72,6 +84,7 @@ export const MannostreeConfigSchema = z.object({
   cleanup: CleanupConfigSchema.default({}),
   parallel: ParallelConfigSchema.default({}),
   publish: PublishConfigSchema.default({}),
+  agent: AgentConfigSchema.default({}),
   integrations: IntegrationsConfigSchema.optional(),
   tags: z
     .object({
@@ -82,3 +95,5 @@ export const MannostreeConfigSchema = z.object({
 
 export type MannostreeConfig = z.infer<typeof MannostreeConfigSchema>;
 export type ProfileConfig = z.infer<typeof ProfileConfigSchema>;
+export type AgentConfig = z.infer<typeof AgentConfigSchema>;
+
