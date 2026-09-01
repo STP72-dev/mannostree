@@ -90,6 +90,13 @@ export const AgentConfigSchema = z.object({
   }),
 });
 
+export const FleetConfigSchema = z.object({
+  default_sync_strategy: z.enum(['rebase', 'merge', 'ff-only']).default('ff-only'),
+  guard_dirty_worktrees: z.boolean().default(true),
+  guard_active_sessions: z.boolean().default(true),
+  auto_simulate_merge: z.boolean().default(true),
+});
+
 export const MannostreeConfigSchema = z.object({
   version: z.number().default(1),
   default_base_branch: z.string().default('main'),
@@ -112,6 +119,7 @@ export const MannostreeConfigSchema = z.object({
   parallel: ParallelConfigSchema.default({}),
   publish: PublishConfigSchema.default({}),
   agent: AgentConfigSchema.default({}),
+  fleet: FleetConfigSchema.default({}),
   integrations: IntegrationsConfigSchema.optional(),
   tags: z
     .object({
@@ -123,4 +131,6 @@ export const MannostreeConfigSchema = z.object({
 export type MannostreeConfig = z.infer<typeof MannostreeConfigSchema>;
 export type ProfileConfig = z.infer<typeof ProfileConfigSchema>;
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
+export type FleetConfig = z.infer<typeof FleetConfigSchema>;
+
 

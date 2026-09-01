@@ -388,12 +388,56 @@ Safely terminate an agent execution session without losing uncommitted worktree 
 mannostree agent cancel feature-my-feature
 ```
 
+---
+
+### Automated Benchmark Harness & Matrix Evaluation (Movement 2)
+
+#### 26. Comparative Matrix Evaluation (`parallel eval`)
+Benchmark competing parallel variant implementations against quality gates, execution duration, and change blast radius:
+```bash
+# Evaluate variants with baseline delta sampling and Weighted Sum Model scoring
+mannostree parallel eval auth-feature
+
+# Automatically promote winning variant and generate matrix evaluation report
+mannostree parallel eval auth-feature --auto-pick
+```
+
+---
+
+### Fleet Synchronization & Conflict Collision Matrix (Movement 3)
+
+#### 27. Fleet Synchronization (`fleet sync`)
+Synchronize active worktrees against their base branches with safety guards against dirty worktrees and active agent sessions:
+```bash
+# Preview divergence across all active worktrees without modifying branches
+mannostree fleet sync --preview
+
+# Synchronize using fast-forward or rebase strategy
+mannostree fleet sync --strategy rebase
+
+# Target a specific worktree for synchronization
+mannostree fleet sync --target feature-my-feature --strategy merge
+```
+
+#### 28. Cross-Worktree Conflict Collision Matrix (`fleet conflict-matrix`)
+Compute $N \times N$ pairwise cross-worktree collision matrix and in-memory 3-way merge simulations:
+```bash
+# Generate cross-worktree file overlap and collision matrix
+mannostree fleet conflict-matrix
+
+# Run in CI/pre-publish pipeline failing if merge hazards exist
+mannostree fleet conflict-matrix --fail-on-conflict
+
+# Output structured machine-readable JSON conflict report
+mannostree fleet conflict-matrix --json
+```
 
 ---
 
 ## Testing & Verification
 
 Run the automated test suite with Vitest:
+
 
 ```bash
 # Run tests

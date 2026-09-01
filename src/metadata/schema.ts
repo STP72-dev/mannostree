@@ -462,6 +462,75 @@ export const ExecutionScorecardSchema = z.object({
   }),
 });
 
+export const FleetSyncStatusSchema = z.object({
+  worktree_id: z.string(),
+  branch: z.string(),
+  base_branch: z.string(),
+  status: z.enum([
+    'SYNCED',
+    'BEHIND',
+    'AHEAD',
+    'DIVERGED',
+    'DIRTY_SKIPPED',
+    'SESSION_ACTIVE_SKIPPED',
+    'FAILED_CONFLICT',
+    'FAILED_ERROR',
+  ]),
+  ahead: z.number().int().nonnegative(),
+  behind: z.number().int().nonnegative(),
+  dirty: z.boolean(),
+  active_session_id: z.string().optional(),
+  message: z.string().optional(),
+  updated_at: z.string(),
+});
+
+export const FleetSyncReportSchema = z.object({
+  synced_at: z.string(),
+  strategy: z.enum(['rebase', 'merge', 'ff-only']),
+  dry_run: z.boolean(),
+  total_worktrees: z.number().int().nonnegative(),
+  synced_count: z.number().int().nonnegative(),
+  skipped_count: z.number().int().nonnegative(),
+  failed_count: z.number().int().nonnegative(),
+  worktrees: z.array(FleetSyncStatusSchema),
+});
+
+export const ConflictMatrixCellSchema = z.object({
+  source_id: z.string(),
+  target_id: z.string(),
+  source_branch: z.string(),
+  target_branch: z.string(),
+  severity: z.enum(['CLEAN', 'SHARED_FILES_CLEAN', 'CONFLICT']),
+  shared_files: z.array(z.string()),
+  conflicting_files: z.array(z.string()),
+  conflict_details: z.array(
+    z.object({
+      file_path: z.string(),
+      source_lines: z.string().optional(),
+      target_lines: z.string().optional(),
+      conflict_type: z.enum(['content', 'modify/delete', 'rename/rename']),
+    })
+  ),
+  auto_mergeable: z.boolean(),
+});
+
+export const FleetConflictMatrixReportSchema = z.object({
+  analyzed_at: z.string(),
+  total_worktrees: z.number().int().nonnegative(),
+  worktree_ids: z.array(z.string()),
+  conflict_hazard_count: z.number().int().nonnegative(),
+  shared_file_pair_count: z.number().int().nonnegative(),
+  matrix: z.array(z.array(ConflictMatrixCellSchema)),
+  high_risk_pairs: z.array(
+    z.object({
+      source_id: z.string(),
+      target_id: z.string(),
+      conflicting_files: z.array(z.string()),
+    })
+  ),
+});
+
+
 
 
 

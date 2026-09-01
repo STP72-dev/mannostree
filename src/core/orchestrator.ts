@@ -22,6 +22,7 @@ import { ParallelHandoffEngine } from './handoff.js';
 import { AgentRunner } from './agent-runner.js';
 import { QualityGatesRunner } from './quality-gates.js';
 import { MatrixEvaluator } from './matrix-eval.js';
+import { FleetEngine } from './fleet.js';
 import {
   parseTaskContractMarkdown,
   validateContractFulfillment,
@@ -48,7 +49,12 @@ import {
   ExperimentMatrixReport,
   ParallelEvalOptions,
   QualityGateCommand,
+  FleetSyncOptions,
+  FleetSyncReport,
+  FleetConflictMatrixOptions,
+  FleetConflictMatrixReport,
 } from '../types/index.js';
+
 
 
 
@@ -138,6 +144,7 @@ export class MannostreeOrchestrator {
   public agentRunner: AgentRunner;
   public qualityGatesRunner: QualityGatesRunner;
   public matrixEvaluator: MatrixEvaluator;
+  public fleetEngine: FleetEngine;
 
   constructor(
     public repoRoot: string,
@@ -168,6 +175,7 @@ export class MannostreeOrchestrator {
     this.agentRunner = new AgentRunner(repoRoot, this.store, config);
     this.qualityGatesRunner = new QualityGatesRunner();
     this.matrixEvaluator = new MatrixEvaluator(repoRoot, this.git, this.store, config);
+    this.fleetEngine = new FleetEngine(repoRoot, config, this.git, this.store);
   }
 
 
@@ -1707,7 +1715,51 @@ ${report.remediation_steps.map((s) => `1. ${s}`).join('\n')}
       errors: [],
     };
   }
+
+  public async fleetSync(
+    options: FleetSyncOptions = {}
+  ): Promise<CommandOutput<FleetSyncReport>> {
+    const report = await this.fleetEngine.syncFleet(options);
+    return {
+      command: 'fleet sync',
+      ok: report.failed_count === 0,
+      dry_run: !!report.dry_run,
+      result: report,
+      warnings:
+        report.skipped_count > 0
+          ? [`${report.skipped_count} worktree(s) skipped due to dirty state or active session.`]
+          : [],
+      errors:
+        report.failed_count > 0
+          ? [`${report.failed_count} worktree(s) encountered sync errors or conflicts.`]
+          : [],
+    };
+  }
+
+  public async fleetConflictMatrix(
+    options: FleetConflictMatrixOptions = {}
+  ): Promise<CommandOutput<FleetConflictMatrixReport>> {
+    const report = await this.fleetEngine.computeConflictMatrix(options);
+    const hasHazards = report.conflict_hazard_count > 0;
+    const ok = !(options.failOnConflict && hasHazards);
+
+    return {
+      command: 'fleet conflict-matrix',
+      ok,
+      dry_run: !!options.dryRun,
+      result: report,
+      warnings: hasHazards
+        ? [`${report.conflict_hazard_count} direct conflict hazard(s) detected across worktrees.`]
+        : [],
+      errors: !ok
+        ? [
+            `Failing due to --fail-on-conflict: ${report.conflict_hazard_count} conflict hazard(s) present.`,
+          ]
+        : [],
+    };
+  }
 }
+
 
 
 

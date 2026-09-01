@@ -20,6 +20,8 @@ import { registerTaskCommand } from './commands/task.js';
 import { registerHandoffCommand } from './commands/handoff.js';
 import { registerArchiveCommand } from './commands/archive.js';
 import { registerAgentCommand } from './commands/agent.js';
+import { registerFleetCommand } from './commands/fleet.js';
+
 import { ExitCode, GlobalOptions, MannostreeError } from '../types/index.js';
 
 export function createProgram(): Command {
@@ -68,11 +70,13 @@ export function createProgram(): Command {
   registerTaskCommand(program);
   registerHandoffCommand(program);
 
-  // Phase 6 / Movement 1 commands
+  // Movement 1 & Movement 3 commands
   registerAgentCommand(program);
+  registerFleetCommand(program);
 
   return program;
 }
+
 
 
 export async function runCli(argv: string[] = process.argv): Promise<void> {

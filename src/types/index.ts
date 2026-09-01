@@ -536,6 +536,91 @@ export interface ParallelEvalOptions {
   dryRun?: boolean;
 }
 
+export type FleetSyncStatusType =
+  | 'SYNCED'
+  | 'BEHIND'
+  | 'AHEAD'
+  | 'DIVERGED'
+  | 'DIRTY_SKIPPED'
+  | 'SESSION_ACTIVE_SKIPPED'
+  | 'FAILED_CONFLICT'
+  | 'FAILED_ERROR';
+
+export interface WorktreeSyncStatus {
+  worktree_id: string;
+  branch: string;
+  base_branch: string;
+  status: FleetSyncStatusType;
+  ahead: number;
+  behind: number;
+  dirty: boolean;
+  active_session_id?: string;
+  message?: string;
+  updated_at: string;
+}
+
+export interface FleetSyncReport {
+  synced_at: string;
+  strategy: 'rebase' | 'merge' | 'ff-only';
+  dry_run: boolean;
+  total_worktrees: number;
+  synced_count: number;
+  skipped_count: number;
+  failed_count: number;
+  worktrees: WorktreeSyncStatus[];
+}
+
+export type ConflictSeverity = 'CLEAN' | 'SHARED_FILES_CLEAN' | 'CONFLICT';
+
+export interface ConflictHunkDetail {
+  file_path: string;
+  source_lines?: string;
+  target_lines?: string;
+  conflict_type: 'content' | 'modify/delete' | 'rename/rename';
+}
+
+export interface ConflictMatrixCell {
+  source_id: string;
+  target_id: string;
+  source_branch: string;
+  target_branch: string;
+  severity: ConflictSeverity;
+  shared_files: string[];
+  conflicting_files: string[];
+  conflict_details: ConflictHunkDetail[];
+  auto_mergeable: boolean;
+}
+
+export interface FleetConflictMatrixReport {
+  analyzed_at: string;
+  total_worktrees: number;
+  worktree_ids: string[];
+  conflict_hazard_count: number;
+  shared_file_pair_count: number;
+  matrix: ConflictMatrixCell[][];
+  high_risk_pairs: Array<{
+    source_id: string;
+    target_id: string;
+    conflicting_files: string[];
+  }>;
+}
+
+export interface FleetSyncOptions {
+  strategy?: 'rebase' | 'merge' | 'ff-only';
+  preview?: boolean;
+  dryRun?: boolean;
+  target?: string;
+}
+
+export interface FleetConflictMatrixOptions {
+  target?: string;
+  simulateMerge?: boolean;
+  failOnConflict?: boolean;
+  verbose?: boolean;
+  dryRun?: boolean;
+}
+
+
 export class MannostreeError extends Error {
   constructor(
     message: string,

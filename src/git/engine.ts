@@ -111,6 +111,9 @@ export class GitEngine {
     return stdout.length > 0;
   }
 
+
+
+
   public async getAheadBehindCount(
     worktreePath: string,
     baseBranch: string,
@@ -343,6 +346,7 @@ export class GitEngine {
   }
 
   public async listPorcelainWorktrees(): Promise<PorcelainWorktreeEntry[]> {
+
     try {
       const { stdout } = await this.exec(['worktree', 'list', '--porcelain']);
       const entries: PorcelainWorktreeEntry[] = [];
@@ -465,6 +469,17 @@ export class GitEngine {
     force: boolean = false,
     dryRun: boolean = false
   ): Promise<void> {
+    return this.deleteWorktree(worktreePath, branch, force, keepBranch, dryRun);
+  }
+
+  public async deleteWorktree(
+    worktreePath: string,
+    branch: string,
+    force: boolean = false,
+    keepBranch: boolean = false,
+    dryRun: boolean = false
+  ): Promise<void> {
+
     const fullWorktreePath = path.resolve(this.workingDir, worktreePath);
 
     if (fs.existsSync(fullWorktreePath)) {
@@ -511,4 +526,99 @@ export class GitEngine {
       }
     }
   }
+
+  public async getChangedFilesAgainstBase(
+    branchOrPath: string,
+    baseBranch: string
+  ): Promise<string[]> {
+    try {
+      const fullPath = path.resolve(this.workingDir, branchOrPath);
+      const isDir = fs.existsSync(fullPath) && fs.statSync(fullPath).isDirectory();
+      const cwd = isDir ? fullPath : this.workingDir;
+      const ref = isDir ? 'HEAD' : branchOrPath;
+
+      const { stdout } = await this.exec(
+        ['diff', '--name-only', `${baseBranch}...${ref}`],
+        cwd
+      );
+      const committed = stdout
+        .split('\n')
+        .map((s) => s.trim())
+        .filter((s) => s && !s.startsWith('.task/') && !s.startsWith('.mannostree/'));
+
+      if (isDir) {
+        const { stdout: statusOut } = await this.exec(['status', '--porcelain'], cwd);
+        const uncommitted = statusOut
+          .split('\n')
+          .map((line) => line.slice(3).trim())
+          .filter((s) => s && !s.startsWith('.task/') && !s.startsWith('.mannostree/'));
+        return Array.from(new Set([...committed, ...uncommitted]));
+      }
+
+      return committed;
+    } catch {
+      return [];
+    }
+  }
+
+  public async simulateMergeTree(
+    branchA: string,
+    branchB: string
+  ): Promise<{
+    clean: boolean;
+    conflicts: Array<{ file: string; detail: string }>;
+    rawOutput: string;
+  }> {
+    try {
+      const { stdout: baseOut } = await this.exec(['merge-base', branchA, branchB], this.workingDir);
+      const mergeBase = baseOut.trim();
+      if (!mergeBase) {
+        return {
+          clean: false,
+          conflicts: [{ file: 'all', detail: 'No common ancestor found' }],
+          rawOutput: '',
+        };
+      }
+
+      const { stdout } = await this.exec(
+        ['merge-tree', mergeBase, branchA, branchB],
+        this.workingDir
+      );
+
+      const conflicts: Array<{ file: string; detail: string }> = [];
+      const lines = stdout.split('\n');
+
+      for (const line of lines) {
+        const match =
+          line.match(/\s+(?:base|our|their)\s+\d+\s+[0-9a-f]+\s+(.+)$/i) ||
+          line.match(/(?:file|path)\s+([^\s]+)/i) ||
+          line.match(/\+\+\+\s+b\/([^\s]+)/);
+        if (match) {
+          const fName = match[1].trim();
+          if (fName && !conflicts.some((c) => c.file === fName)) {
+            conflicts.push({ file: fName, detail: line.trim() });
+          }
+        }
+      }
+
+      const hasConflict =
+        stdout.includes('<<<<<<<') ||
+        stdout.includes('changed in both') ||
+        stdout.includes('conflict') ||
+        conflicts.length > 0;
+
+      return {
+        clean: !hasConflict,
+        conflicts,
+        rawOutput: stdout,
+      };
+    } catch (err: any) {
+      return {
+        clean: false,
+        conflicts: [{ file: 'error', detail: err.message || 'Simulation error' }],
+        rawOutput: '',
+      };
+    }
+  }
 }
+
