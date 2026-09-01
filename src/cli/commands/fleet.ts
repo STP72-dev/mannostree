@@ -137,4 +137,301 @@ export function registerFleetCommand(program: Command): void {
         return lines.join('\n');
       });
     });
+
+  // fleet lease
+  const leaseCmd = fleetCmd
+    .command('lease')
+    .description('Manage exclusive workspace concurrency leases and locks');
+
+  leaseCmd
+    .command('acquire <worktree_id>')
+    .description('Acquire exclusive lease on a worktree')
+    .option('--holder <name>', 'Name or identifier of agent/developer claiming lease')
+    .option('--ttl <duration>', 'Lease duration (e.g. 30m, 2h, 1d)', '60m')
+    .option('--purpose <description>', 'Declared intention or task description', 'Development lease')
+    .action(async (worktreeId: string, cmdOptions: any) => {
+      const globalOpts = program.opts<GlobalOptions>();
+      const cwd = globalOpts.cwd ? globalOpts.cwd : process.cwd();
+      const config = loadConfig(globalOpts.config, cwd);
+      const git = new GitEngine(cwd);
+      const repoRoot = await git.getRepoRoot();
+      const orchestrator = new MannostreeOrchestrator(repoRoot, config);
+
+      const result = await orchestrator.fleetLeaseAcquire(worktreeId, {
+        holder: cmdOptions.holder,
+        ttl: cmdOptions.ttl,
+        purpose: cmdOptions.purpose,
+      });
+
+      formatOutput(result, globalOpts, (lease) => {
+        const lines: string[] = [];
+        lines.push(chalk.green.bold('✓ Lease Acquired Successfully:'));
+        lines.push(`  Worktree:    ${chalk.bold(lease.worktree_id)}`);
+        lines.push(`  Lease ID:    ${lease.lease_id}`);
+        lines.push(`  Holder:      ${chalk.cyan(lease.holder)}`);
+        lines.push(`  Purpose:     ${lease.purpose}`);
+        lines.push(`  Expires At:  ${chalk.yellow(lease.expires_at)} (${Math.round(lease.ttl_seconds / 60)} mins)`);
+        return lines.join('\n');
+      });
+    });
+
+  leaseCmd
+    .command('release <worktree_id>')
+    .description('Release an active lease on a worktree')
+    .option('--force', 'Force release lease even if held by another process', false)
+    .action(async (worktreeId: string, cmdOptions: any) => {
+      const globalOpts = program.opts<GlobalOptions>();
+      const cwd = globalOpts.cwd ? globalOpts.cwd : process.cwd();
+      const config = loadConfig(globalOpts.config, cwd);
+      const git = new GitEngine(cwd);
+      const repoRoot = await git.getRepoRoot();
+      const orchestrator = new MannostreeOrchestrator(repoRoot, config);
+
+      const result = await orchestrator.fleetLeaseRelease(worktreeId, {
+        force: cmdOptions.force,
+      });
+
+      formatOutput(result, globalOpts, (lease) => {
+        return chalk.green(`✓ Lease released for worktree '${chalk.bold(lease.worktree_id)}'.`);
+      });
+    });
+
+  leaseCmd
+    .command('renew <worktree_id>')
+    .description('Extend expiration of an active lease')
+    .option('--ttl <duration>', 'Extension duration (e.g. 30m, 1h)', '60m')
+    .action(async (worktreeId: string, cmdOptions: any) => {
+      const globalOpts = program.opts<GlobalOptions>();
+      const cwd = globalOpts.cwd ? globalOpts.cwd : process.cwd();
+      const config = loadConfig(globalOpts.config, cwd);
+      const git = new GitEngine(cwd);
+      const repoRoot = await git.getRepoRoot();
+      const orchestrator = new MannostreeOrchestrator(repoRoot, config);
+
+      const result = await orchestrator.fleetLeaseRenew(worktreeId, {
+        ttl: cmdOptions.ttl,
+      });
+
+      formatOutput(result, globalOpts, (lease) => {
+        const lines: string[] = [];
+        lines.push(chalk.green.bold('✓ Lease Renewed Successfully:'));
+        lines.push(`  Worktree:     ${chalk.bold(lease.worktree_id)}`);
+        lines.push(`  New Expiry:   ${chalk.yellow(lease.expires_at)}`);
+        lines.push(`  Renew Count:  ${lease.renew_count}`);
+        return lines.join('\n');
+      });
+    });
+
+  leaseCmd
+    .command('list')
+    .description('List all active and expired workspace leases')
+    .option('--active', 'Show only active unexpired leases', false)
+    .action(async (cmdOptions: any) => {
+      const globalOpts = program.opts<GlobalOptions>();
+      const cwd = globalOpts.cwd ? globalOpts.cwd : process.cwd();
+      const config = loadConfig(globalOpts.config, cwd);
+      const git = new GitEngine(cwd);
+      const repoRoot = await git.getRepoRoot();
+      const orchestrator = new MannostreeOrchestrator(repoRoot, config);
+
+      const result = await orchestrator.fleetLeaseList({ activeOnly: cmdOptions.active });
+
+      formatOutput(result, globalOpts, (leases) => {
+        if (leases.length === 0) {
+          return chalk.gray('No leases found across the fleet.');
+        }
+        const lines: string[] = [];
+        lines.push(chalk.bold(`Fleet Leases (${leases.length}):`));
+        for (const l of leases) {
+          const isExpired = new Date(l.expires_at).getTime() <= Date.now();
+          const statusStr = isExpired
+            ? chalk.gray('[EXPIRED]')
+            : l.status === 'active'
+            ? chalk.green('[ACTIVE]')
+            : chalk.yellow(`[${l.status.toUpperCase()}]`);
+          lines.push(`  ${statusStr} ${chalk.bold(l.worktree_id)} (Holder: ${l.holder})`);
+          lines.push(`     Purpose: ${l.purpose} | Expires: ${l.expires_at}`);
+        }
+        return lines.join('\n');
+      });
+    });
+
+  // fleet tier
+  const tierCmd = fleetCmd
+    .command('tier')
+    .description('Manage workspace lifecycle tiers and pinning');
+
+  tierCmd
+    .command('set <worktree_id> <tier>')
+    .description('Set lifecycle tier for a worktree (hot, warm, cold, pinned)')
+    .action(async (worktreeId: string, tier: string) => {
+      const globalOpts = program.opts<GlobalOptions>();
+      const cwd = globalOpts.cwd ? globalOpts.cwd : process.cwd();
+      const config = loadConfig(globalOpts.config, cwd);
+      const git = new GitEngine(cwd);
+      const repoRoot = await git.getRepoRoot();
+      const orchestrator = new MannostreeOrchestrator(repoRoot, config);
+
+      const result = await orchestrator.fleetTierSet(worktreeId, tier as any);
+      formatOutput(result, globalOpts, (rec) => {
+        return chalk.green(`✓ Set tier '${tier}' on worktree '${chalk.bold(rec.id)}'.`);
+      });
+    });
+
+  tierCmd
+    .command('pin <worktree_id>')
+    .description('Pin a worktree to exempt it from auto-archival')
+    .action(async (worktreeId: string) => {
+      const globalOpts = program.opts<GlobalOptions>();
+      const cwd = globalOpts.cwd ? globalOpts.cwd : process.cwd();
+      const config = loadConfig(globalOpts.config, cwd);
+      const git = new GitEngine(cwd);
+      const repoRoot = await git.getRepoRoot();
+      const orchestrator = new MannostreeOrchestrator(repoRoot, config);
+
+      const result = await orchestrator.fleetTierPin(worktreeId);
+      formatOutput(result, globalOpts, (rec) => {
+        return chalk.green(`✓ Pinned worktree '${chalk.bold(rec.id)}' (exempt from auto-archive).`);
+      });
+    });
+
+  tierCmd
+    .command('unpin <worktree_id>')
+    .description('Unpin a worktree')
+    .action(async (worktreeId: string) => {
+      const globalOpts = program.opts<GlobalOptions>();
+      const cwd = globalOpts.cwd ? globalOpts.cwd : process.cwd();
+      const config = loadConfig(globalOpts.config, cwd);
+      const git = new GitEngine(cwd);
+      const repoRoot = await git.getRepoRoot();
+      const orchestrator = new MannostreeOrchestrator(repoRoot, config);
+
+      const result = await orchestrator.fleetTierUnpin(worktreeId);
+      formatOutput(result, globalOpts, (rec) => {
+        return chalk.green(`✓ Unpinned worktree '${chalk.bold(rec.id)}'.`);
+      });
+    });
+
+  tierCmd
+    .command('list')
+    .description('List all worktrees by lifecycle tier')
+    .action(async () => {
+      const globalOpts = program.opts<GlobalOptions>();
+      const cwd = globalOpts.cwd ? globalOpts.cwd : process.cwd();
+      const config = loadConfig(globalOpts.config, cwd);
+      const git = new GitEngine(cwd);
+      const repoRoot = await git.getRepoRoot();
+      const orchestrator = new MannostreeOrchestrator(repoRoot, config);
+
+      const result = await orchestrator.fleetTierList();
+      formatOutput(result, globalOpts, (tiers) => {
+        const lines: string[] = [];
+        lines.push(chalk.bold(`Fleet Workspace Tiers (${tiers.length}):`));
+        for (const t of tiers) {
+          let tierColor = chalk.cyan;
+          if (t.tier === 'hot') tierColor = chalk.red.bold;
+          if (t.tier === 'pinned') tierColor = chalk.magenta.bold;
+          if (t.tier === 'cold') tierColor = chalk.gray;
+          lines.push(`  ${tierColor(`[${t.tier.toUpperCase()}]`)} ${chalk.bold(t.id)} (${t.branch}) ${t.pinned ? chalk.magenta('[PINNED]') : ''}`);
+          lines.push(`     Path: ${t.path} | Last Access: ${t.last_accessed_at || 'n/a'}`);
+        }
+        return lines.join('\n');
+      });
+    });
+
+  // fleet auto-archive
+  fleetCmd
+    .command('auto-archive')
+    .description('Evaluate retention policies and auto-archive idle/excess warm worktrees')
+    .option('--preview', 'Preview candidate worktrees without modifying disk', false)
+    .option('--yes', 'Confirm automatic archival', false)
+    .option('--force', 'Force proceed bypassing non-critical warnings', false)
+    .action(async (cmdOptions: any) => {
+      const globalOpts = program.opts<GlobalOptions>();
+      const cwd = globalOpts.cwd ? globalOpts.cwd : process.cwd();
+      const config = loadConfig(globalOpts.config, cwd);
+      const git = new GitEngine(cwd);
+      const repoRoot = await git.getRepoRoot();
+      const orchestrator = new MannostreeOrchestrator(repoRoot, config);
+
+      const result = await orchestrator.fleetAutoArchive({
+        preview: cmdOptions.preview || globalOpts.dryRun,
+        dryRun: globalOpts.dryRun,
+        yes: cmdOptions.yes,
+        force: cmdOptions.force,
+      });
+
+      formatOutput(result, globalOpts, (report) => {
+        const lines: string[] = [];
+        const mode = report.dry_run ? ' [PREVIEW]' : '';
+        lines.push(chalk.bold(`Auto-Archive Execution Report${mode}:`));
+        lines.push(`  Evaluated:   ${report.total_evaluated}`);
+        lines.push(`  Archived:    ${chalk.green.bold(report.archived_count)}`);
+        lines.push(`  Skipped:     ${chalk.yellow.bold(report.skipped_count)}`);
+        lines.push('');
+
+        if (report.archived_worktrees.length > 0) {
+          lines.push(chalk.bold('Archived Worktrees:'));
+          for (const a of report.archived_worktrees) {
+            lines.push(`  ${chalk.green('✓')} ${chalk.bold(a.id)} (${a.branch}) — Reason: ${a.reason}`);
+          }
+          lines.push('');
+        }
+
+        if (report.skipped_worktrees.length > 0) {
+          lines.push(chalk.bold('Skipped Worktrees:'));
+          for (const s of report.skipped_worktrees) {
+            lines.push(`  ${chalk.yellow('~')} ${chalk.bold(s.id)} — ${s.reason}`);
+          }
+          lines.push('');
+        }
+
+        return lines.join('\n');
+      });
+    });
+
+  // fleet status
+  fleetCmd
+    .command('status')
+    .description('Display fleet capacity, tier distribution, active leases, and resource metrics')
+    .action(async () => {
+      const globalOpts = program.opts<GlobalOptions>();
+      const cwd = globalOpts.cwd ? globalOpts.cwd : process.cwd();
+      const config = loadConfig(globalOpts.config, cwd);
+      const git = new GitEngine(cwd);
+      const repoRoot = await git.getRepoRoot();
+      const orchestrator = new MannostreeOrchestrator(repoRoot, config);
+
+      const result = await orchestrator.fleetCapacityStatus();
+      formatOutput(result, globalOpts, (report) => {
+        const lines: string[] = [];
+        lines.push(chalk.bold.cyan('╔═════════════════════════════════════════════════════════════╗'));
+        lines.push(chalk.bold.cyan('║                   Mannostree Fleet Status                   ║'));
+        lines.push(chalk.bold.cyan('╠═════════════════════════════════════════════════════════════╣'));
+        lines.push(`  Capacity Quota:      ${chalk.bold(report.active_mounted_count)} / ${report.max_capacity} Active Worktrees`);
+        lines.push(`  Total Worktrees:     ${report.total_worktrees}`);
+        lines.push(`  Estimated Disk:      ${Math.round(report.total_disk_bytes / 1024)} KB`);
+        lines.push('');
+        lines.push(chalk.bold('  Lifecycle Tier Distribution:'));
+        lines.push(`    🔥 Hot (Active/Leased): ${chalk.red.bold(report.hot_count)}`);
+        lines.push(`    🌤️ Warm (Mounted Idle):  ${chalk.cyan(report.warm_count)}`);
+        lines.push(`    🧊 Cold (Archived Ref):  ${chalk.gray(report.cold_count)}`);
+        lines.push(`    📌 Pinned:               ${chalk.magenta.bold(report.pinned_count)}`);
+        lines.push('');
+        lines.push(`  Active Leases:       ${report.active_leases.length}`);
+        for (const l of report.active_leases) {
+          lines.push(`    • ${chalk.bold(l.worktree_id)} (Holder: ${l.holder}, Expires: ${l.expires_at})`);
+        }
+        if (report.archive_candidates.length > 0) {
+          lines.push('');
+          lines.push(chalk.yellow.bold(`  Archive Candidates (${report.archive_candidates.length}):`));
+          for (const c of report.archive_candidates) {
+            lines.push(`    • ${chalk.bold(c.id)} (${c.idle_hours}h idle) — ${c.reason}`);
+          }
+        }
+        lines.push(chalk.bold.cyan('╚═════════════════════════════════════════════════════════════╝'));
+        return lines.join('\n');
+      });
+    });
 }
+

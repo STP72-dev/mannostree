@@ -434,9 +434,66 @@ mannostree fleet conflict-matrix --json
 
 ---
 
+### Fleet Tiering, Workspace Leases & Auto-Archive Policy (Movement 4)
+
+#### 29. Workspace Leases & Concurrency Locks (`fleet lease`)
+Acquire, inspect, renew, and release concurrency leases on worktrees to protect against accidental concurrent edits or automated cleanup:
+```bash
+# Acquire an exclusive lease with declared purpose and TTL
+mannostree fleet lease acquire feature-auth --holder agent-alpha --ttl 1h --purpose "Auth module migration"
+
+# List active leases across the fleet
+mannostree fleet lease list --active
+
+# Extend expiration on an active lease
+mannostree fleet lease renew feature-auth --ttl 30m
+
+# Release lease when work is complete
+mannostree fleet lease release feature-auth
+```
+
+#### 30. Lifecycle Tiering & Pinning (`fleet tier`)
+Classify worktrees into tiers (`hot`, `warm`, `cold`, `pinned`) and protect important workspaces against automated pruning:
+```bash
+# Explicitly pin a critical worktree
+mannostree fleet tier pin feature-main-refactor
+
+# Set explicit lifecycle tier
+mannostree fleet tier set feature-cache-v1 warm
+
+# Unpin a worktree
+mannostree fleet tier unpin feature-main-refactor
+
+# List all fleet worktrees by lifecycle tier
+mannostree fleet tier list
+```
+
+#### 31. Auto-Archive Retention Engine (`fleet auto-archive`)
+Evaluate capacity quotas and retention policies to automatically unmount and archive idle worktrees without losing branch data:
+```bash
+# Preview candidates eligible for auto-archival without modifying disk
+mannostree fleet auto-archive --preview
+
+# Execute auto-archival of excess or idle worktrees
+mannostree fleet auto-archive --yes
+```
+
+#### 32. Fleet Capacity & Status Dashboard (`fleet status`)
+Display real-time fleet capacity, active mounted worktrees vs quota limits, lifecycle tier distributions, active leases, and disk footprint:
+```bash
+# Display formatted fleet capacity dashboard
+mannostree fleet status
+
+# Machine-readable capacity metrics in JSON
+mannostree fleet status --json
+```
+
+---
+
 ## Testing & Verification
 
 Run the automated test suite with Vitest:
+
 
 
 ```bash

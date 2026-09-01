@@ -143,11 +143,16 @@ export interface WorktreeRecord {
   profile?: string;
   status: WorktreeStatus | string;
   lifecycle_state: LifecycleState;
+  pinned?: boolean;
+  tier?: FleetTier;
+  last_accessed_at?: string;
+  active_lease_id?: string;
   task?: TaskMetadata;
   artifacts?: ArtifactsMetadata;
   setup?: SetupMetadata;
   git_state?: GitStateMetadata;
   validation?: ValidationMetadata;
+
   review?: ReviewMetadata;
   publish?: PublishMetadata;
   parallel?: ParallelMetadata;
@@ -620,6 +625,81 @@ export interface FleetConflictMatrixOptions {
   dryRun?: boolean;
 }
 
+export type FleetTier = 'hot' | 'warm' | 'cold' | 'pinned';
+
+export interface WorkspaceLease {
+  lease_id: string;
+  worktree_id: string;
+  holder: string;
+  purpose: string;
+  acquired_at: string;
+  expires_at: string;
+  ttl_seconds: number;
+  status: 'active' | 'expired' | 'released';
+  renew_count: number;
+}
+
+export interface FleetCapacityReport {
+  analyzed_at: string;
+  max_capacity: number;
+  total_worktrees: number;
+  active_mounted_count: number;
+  hot_count: number;
+  warm_count: number;
+  cold_count: number;
+  pinned_count: number;
+  active_leases: WorkspaceLease[];
+  archive_candidates: Array<{
+    id: string;
+    branch: string;
+    tier: FleetTier;
+    idle_hours: number;
+    reason: string;
+  }>;
+  total_disk_bytes: number;
+}
+
+export interface AutoArchiveReport {
+  timestamp: string;
+  dry_run: boolean;
+  total_evaluated: number;
+  archived_count: number;
+  skipped_count: number;
+  archived_worktrees: Array<{
+    id: string;
+    branch: string;
+    reason: string;
+  }>;
+  skipped_worktrees: Array<{
+    id: string;
+    reason: string;
+  }>;
+}
+
+export interface FleetLeaseAcquireOptions {
+  holder?: string;
+  ttl?: string;
+  purpose?: string;
+}
+
+export interface FleetLeaseReleaseOptions {
+  force?: boolean;
+}
+
+export interface FleetLeaseRenewOptions {
+  ttl?: string;
+}
+
+export interface FleetTierSetOptions {
+  tier: FleetTier;
+}
+
+export interface FleetAutoArchiveOptions {
+  preview?: boolean;
+  dryRun?: boolean;
+  force?: boolean;
+  yes?: boolean;
+}
 
 export class MannostreeError extends Error {
   constructor(
@@ -631,5 +711,6 @@ export class MannostreeError extends Error {
     this.name = 'MannostreeError';
   }
 }
+
 
 

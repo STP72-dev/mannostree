@@ -5,19 +5,29 @@ import { MetadataStore } from '../metadata/store.js';
 import { MannostreeConfig } from '../config/schema.js';
 import {
   AgentSessionState,
+  AutoArchiveReport,
   ConflictHunkDetail,
   ConflictMatrixCell,
   ConflictSeverity,
   ExitCode,
+  FleetAutoArchiveOptions,
+  FleetCapacityReport,
   FleetConflictMatrixOptions,
   FleetConflictMatrixReport,
+  FleetLeaseAcquireOptions,
+  FleetLeaseReleaseOptions,
+  FleetLeaseRenewOptions,
   FleetSyncOptions,
   FleetSyncReport,
   FleetSyncStatusType,
+  FleetTier,
+  FleetTierSetOptions,
   MannostreeError,
+  WorkspaceLease,
   WorktreeRecord,
   WorktreeSyncStatus,
 } from '../types/index.js';
+
 
 
 export class FleetEngine {
@@ -76,8 +86,34 @@ export class FleetEngine {
         continue;
       }
 
-      // Check dirty
       const isDirty = await this.git.isWorktreeDirty(fullPath);
+
+      // Check active agent sessions or active leases first
+      const sessions = await this.store.listSessions({ worktreeId: record.id });
+      const activeStates: AgentSessionState[] = ['dispatched', 'planning', 'working', 'verifying'];
+      const activeSession = sessions.find((s) => activeStates.includes(s.state));
+      const activeLease = await this.hasActiveLease(record.id);
+
+      if ((activeSession || activeLease.active) && this.config.fleet?.guard_active_sessions !== false) {
+        skippedCount++;
+        worktreeStatuses.push({
+          worktree_id: record.id,
+          branch: record.branch,
+          base_branch: record.base_branch,
+          status: 'SESSION_ACTIVE_SKIPPED',
+          ahead: 0,
+          behind: 0,
+          dirty: isDirty,
+          active_session_id: activeSession?.session_id || activeLease.lease?.lease_id,
+          message: activeSession
+            ? `Skipped sync due to active agent session '${activeSession.session_id}'.`
+            : `Skipped sync due to active workspace lease (${activeLease.lease?.lease_id} held by ${activeLease.lease?.holder}).`,
+          updated_at: new Date().toISOString(),
+        });
+        continue;
+      }
+
+      // Check dirty
       if (isDirty && this.config.fleet?.guard_dirty_worktrees !== false) {
         skippedCount++;
         worktreeStatuses.push({
@@ -94,28 +130,7 @@ export class FleetEngine {
         continue;
       }
 
-      // Check active agent sessions
-      const sessions = await this.store.listSessions({ worktreeId: record.id });
-      const activeStates: AgentSessionState[] = ['dispatched', 'planning', 'working', 'verifying'];
-      const activeSession = sessions.find((s) => activeStates.includes(s.state));
-      if (activeSession && this.config.fleet?.guard_active_sessions !== false) {
 
-
-        skippedCount++;
-        worktreeStatuses.push({
-          worktree_id: record.id,
-          branch: record.branch,
-          base_branch: record.base_branch,
-          status: 'SESSION_ACTIVE_SKIPPED',
-          ahead: 0,
-          behind: 0,
-          dirty: isDirty,
-          active_session_id: activeSession.session_id,
-          message: `Skipped sync due to active agent session '${activeSession.session_id}'.`,
-          updated_at: new Date().toISOString(),
-        });
-        continue;
-      }
 
       // Compute ahead / behind
       let ahead = 0;
@@ -533,4 +548,465 @@ export class FleetEngine {
 
     return lines.join('\n');
   }
+
+  /**
+   * Acquire exclusive concurrency lease on a worktree.
+   */
+  public async acquireLease(
+    worktreeId: string,
+    options: FleetLeaseAcquireOptions = {}
+  ): Promise<WorkspaceLease> {
+    const worktree = await this.store.getWorktree(worktreeId);
+    if (!worktree) {
+      throw new MannostreeError(
+        `Worktree '${worktreeId}' not found in metadata registry.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    const currentLease = await this.store.getLease(worktreeId);
+    const now = Date.now();
+    if (currentLease && currentLease.status === 'active') {
+      const expiresAtMs = new Date(currentLease.expires_at).getTime();
+      if (expiresAtMs > now) {
+        throw new MannostreeError(
+          `Worktree '${worktreeId}' is currently leased by ${currentLease.holder} until ${currentLease.expires_at} (purpose: "${currentLease.purpose}"). Use release --force to break the lease.`,
+          ExitCode.USAGE_ERROR
+        );
+      }
+    }
+
+    const defaultMins = this.config.fleet?.policy?.default_lease_ttl_minutes || 60;
+    const ttlSeconds = parseDurationSeconds(options.ttl, defaultMins);
+    const acquiredAt = new Date().toISOString();
+    const expiresAt = new Date(now + ttlSeconds * 1000).toISOString();
+
+    const lease: WorkspaceLease = {
+      lease_id: `lease-${worktreeId}-${now}`,
+      worktree_id: worktreeId,
+      holder: options.holder || process.env.USER || 'anonymous',
+      purpose: options.purpose || 'Development lease',
+      acquired_at: acquiredAt,
+      expires_at: expiresAt,
+      ttl_seconds: ttlSeconds,
+      status: 'active',
+      renew_count: 0,
+    };
+
+    await this.store.saveLease(lease);
+
+    // Update worktree metadata
+    worktree.active_lease_id = lease.lease_id;
+    worktree.last_accessed_at = acquiredAt;
+    worktree.tier = 'hot';
+    worktree.updated_at = acquiredAt;
+    await this.store.saveWorktree(worktree);
+
+    return lease;
+  }
+
+  /**
+   * Release an active lease on a worktree.
+   */
+  public async releaseLease(
+    worktreeId: string,
+    options: FleetLeaseReleaseOptions = {}
+  ): Promise<WorkspaceLease> {
+    const worktree = await this.store.getWorktree(worktreeId);
+    if (!worktree) {
+      throw new MannostreeError(
+        `Worktree '${worktreeId}' not found in metadata registry.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    let lease = await this.store.getLease(worktreeId);
+    const now = Date.now();
+
+    if (!lease) {
+      lease = {
+        lease_id: `lease-${worktreeId}-${now}`,
+        worktree_id: worktreeId,
+        holder: 'none',
+        purpose: 'none',
+        acquired_at: new Date(now).toISOString(),
+        expires_at: new Date(now).toISOString(),
+        ttl_seconds: 0,
+        status: 'released',
+        renew_count: 0,
+      };
+    } else {
+      lease.status = 'released';
+      await this.store.saveLease(lease);
+    }
+
+    // Update worktree metadata
+    worktree.active_lease_id = undefined;
+    worktree.updated_at = new Date().toISOString();
+    await this.store.saveWorktree(worktree);
+
+    return lease;
+  }
+
+  /**
+   * Renew an active lease extending expiration.
+   */
+  public async renewLease(
+    worktreeId: string,
+    options: FleetLeaseRenewOptions = {}
+  ): Promise<WorkspaceLease> {
+    const worktree = await this.store.getWorktree(worktreeId);
+    if (!worktree) {
+      throw new MannostreeError(
+        `Worktree '${worktreeId}' not found in metadata registry.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    const lease = await this.store.getLease(worktreeId);
+    if (!lease || lease.status !== 'active') {
+      throw new MannostreeError(
+        `No active lease found for worktree '${worktreeId}'. Acquire a new lease instead.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    const defaultMins = this.config.fleet?.policy?.default_lease_ttl_minutes || 60;
+    const ttlSeconds = parseDurationSeconds(options.ttl, defaultMins);
+    const now = Date.now();
+
+    lease.expires_at = new Date(now + ttlSeconds * 1000).toISOString();
+    lease.ttl_seconds = ttlSeconds;
+    lease.renew_count = (lease.renew_count || 0) + 1;
+    await this.store.saveLease(lease);
+
+    worktree.last_accessed_at = new Date().toISOString();
+    worktree.updated_at = new Date().toISOString();
+    await this.store.saveWorktree(worktree);
+
+    return lease;
+  }
+
+  /**
+   * List all leases.
+   */
+  public async listLeases(options?: { activeOnly?: boolean }): Promise<WorkspaceLease[]> {
+    return this.store.listLeases(options);
+  }
+
+  /**
+   * Check if a worktree has an active, unexpired lease.
+   */
+  public async hasActiveLease(
+    worktreeId: string
+  ): Promise<{ active: boolean; lease?: WorkspaceLease }> {
+    const lease = await this.store.getLease(worktreeId);
+    if (!lease) {
+      return { active: false };
+    }
+    const isExpired = new Date(lease.expires_at).getTime() <= Date.now();
+    if (lease.status === 'active' && !isExpired) {
+      return { active: true, lease };
+    }
+    return { active: false, lease };
+  }
+
+  /**
+   * Calculate effective tier for a worktree.
+   */
+  public getEffectiveTier(record: WorktreeRecord, lease?: WorkspaceLease | null): FleetTier {
+    if (record.pinned) return 'pinned';
+    if (record.status === 'archived' || record.lifecycle_state === 'CLEANED' || record.tier === 'cold') return 'cold';
+    if (lease && lease.status === 'active' && new Date(lease.expires_at).getTime() > Date.now()) {
+      return 'hot';
+    }
+    if (record.tier === 'warm') return 'warm';
+    if (record.tier === 'hot') return 'hot';
+    const hotThresholdHours = this.config.fleet?.policy?.hot_threshold_hours || 4;
+    const lastActivity = record.last_accessed_at || record.last_activity_at || record.updated_at;
+    if (lastActivity) {
+      const elapsedHours = (Date.now() - new Date(lastActivity).getTime()) / (1000 * 3600);
+      if (elapsedHours <= hotThresholdHours) {
+        return 'hot';
+      }
+    }
+    return 'warm';
+  }
+
+
+  /**
+   * Set tier explicitly on a worktree.
+   */
+  public async setTier(worktreeId: string, tier: FleetTier): Promise<WorktreeRecord> {
+    const record = await this.store.getWorktree(worktreeId);
+    if (!record) {
+      throw new MannostreeError(
+        `Worktree '${worktreeId}' not found in metadata registry.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+    record.tier = tier;
+    record.pinned = tier === 'pinned';
+    record.updated_at = new Date().toISOString();
+    await this.store.saveWorktree(record);
+    return record;
+
+  }
+
+  /**
+   * Pin a worktree to exempt it from auto-archival.
+   */
+  public async pinWorktree(worktreeId: string): Promise<WorktreeRecord> {
+    return this.setTier(worktreeId, 'pinned');
+  }
+
+  /**
+   * Unpin a worktree.
+   */
+  public async unpinWorktree(worktreeId: string): Promise<WorktreeRecord> {
+    return this.setTier(worktreeId, 'warm');
+  }
+
+  /**
+   * List all worktree tiers.
+   */
+  public async listTiers(): Promise<
+    Array<{
+      id: string;
+      branch: string;
+      tier: FleetTier;
+      pinned: boolean;
+      status: string;
+      path: string;
+      last_accessed_at?: string;
+    }>
+  > {
+    const records = await this.store.listWorktrees();
+    const result = [];
+    for (const r of records) {
+      const lease = await this.store.getLease(r.id);
+      const tier = this.getEffectiveTier(r, lease);
+      result.push({
+        id: r.id,
+        branch: r.branch,
+        tier,
+        pinned: !!r.pinned,
+        status: r.status,
+        path: r.worktree_path,
+        last_accessed_at: r.last_accessed_at || r.updated_at,
+      });
+    }
+    return result;
+  }
+
+  /**
+   * Evaluate retention policies and auto-archive idle/excess warm worktrees.
+   */
+  public async autoArchive(options: FleetAutoArchiveOptions = {}): Promise<AutoArchiveReport> {
+    const allRecords = await this.store.listWorktrees();
+    const activeRecords = allRecords.filter(
+      (r) => r.status !== 'archived' && r.status !== 'cleaned' && r.lifecycle_state !== 'CLEANED'
+    );
+
+    const isDryRun = !!(options.dryRun || options.preview || !options.yes);
+    const maxActive = this.config.fleet?.policy?.max_active_worktrees ?? 10;
+    const idleTtlHours = this.config.fleet?.policy?.idle_ttl_hours ?? 48;
+    const dirtyPolicy = this.config.fleet?.policy?.archive_dirty_policy || 'refuse';
+
+    const archived: Array<{ id: string; branch: string; reason: string }> = [];
+    const skipped: Array<{ id: string; reason: string }> = [];
+    const candidates: Array<{ record: WorktreeRecord; idleHours: number; reason: string }> = [];
+
+    const now = Date.now();
+
+    for (const rec of activeRecords) {
+      // 1. Check pinned
+      if (rec.pinned) {
+        skipped.push({ id: rec.id, reason: 'Worktree is pinned' });
+        continue;
+      }
+
+      // 2. Check active lease
+      const leaseStatus = await this.hasActiveLease(rec.id);
+      if (leaseStatus.active) {
+        skipped.push({
+          id: rec.id,
+          reason: `Active lease held by ${leaseStatus.lease?.holder} until ${leaseStatus.lease?.expires_at}`,
+        });
+        continue;
+      }
+
+      // 3. Check dirty
+      const fullPath = path.resolve(this.repoRoot, rec.worktree_path);
+      if (fs.existsSync(fullPath)) {
+        const isDirty = await this.git.isWorktreeDirty(fullPath);
+        if (isDirty && dirtyPolicy === 'refuse' && !options.force) {
+          skipped.push({ id: rec.id, reason: 'Uncommitted changes (policy: refuse)' });
+          continue;
+        }
+      }
+
+      // Compute idle hours
+      const lastActivity = rec.last_accessed_at || rec.last_activity_at || rec.updated_at;
+      const idleHours = lastActivity ? (now - new Date(lastActivity).getTime()) / (1000 * 3600) : 0;
+
+      if (idleHours >= idleTtlHours) {
+        candidates.push({
+          record: rec,
+          idleHours,
+          reason: `Idle for ${Math.round(idleHours)}h (exceeds ${idleTtlHours}h limit)`,
+        });
+      } else {
+        candidates.push({
+          record: rec,
+          idleHours,
+          reason: 'Eligible for quota pruning',
+        });
+      }
+    }
+
+    // Sort candidates by least recently used (highest idle hours first)
+    candidates.sort((a, b) => b.idleHours - a.idleHours);
+
+    // Determine candidates to archive: either over idle TTL or exceeding max active quota
+    const quotaExcessCount = Math.max(0, activeRecords.length - maxActive);
+    const toArchive = new Set<string>();
+
+    for (const c of candidates) {
+      if (c.idleHours >= idleTtlHours) {
+        toArchive.add(c.record.id);
+        archived.push({ id: c.record.id, branch: c.record.branch, reason: c.reason });
+      }
+    }
+
+
+    for (const c of candidates) {
+      if (toArchive.size < quotaExcessCount && !toArchive.has(c.record.id)) {
+        toArchive.add(c.record.id);
+        archived.push({
+          id: c.record.id,
+          branch: c.record.branch,
+          reason: `Exceeds max active quota (limit: ${maxActive})`,
+        });
+      }
+    }
+
+    // If not dry-run and yes confirmed, execute unmount and metadata update
+    if (!isDryRun) {
+      for (const item of archived) {
+        const rec = activeRecords.find((r) => r.id === item.id);
+        if (rec) {
+          const fullPath = path.resolve(this.repoRoot, rec.worktree_path);
+          if (fs.existsSync(fullPath)) {
+            await this.git.exec(['worktree', 'remove', fullPath, '--force']);
+          }
+          rec.status = 'archived';
+          rec.lifecycle_state = 'CLEANED';
+          rec.tier = 'cold';
+          rec.updated_at = new Date().toISOString();
+          await this.store.saveWorktree(rec);
+        }
+      }
+    }
+
+    return {
+      timestamp: new Date().toISOString(),
+      dry_run: isDryRun,
+      total_evaluated: activeRecords.length,
+      archived_count: archived.length,
+      skipped_count: skipped.length,
+      archived_worktrees: archived,
+      skipped_worktrees: skipped,
+    };
+  }
+
+  /**
+   * Generate comprehensive fleet capacity and tier dashboard.
+   */
+  public async getFleetCapacityReport(): Promise<FleetCapacityReport> {
+    const allRecords = await this.store.listWorktrees();
+    const activeLeases = await this.listLeases({ activeOnly: true });
+
+    let activeMountedCount = 0;
+    let hotCount = 0;
+    let warmCount = 0;
+    let coldCount = 0;
+    let pinnedCount = 0;
+    let totalDiskBytes = 0;
+
+    const archiveCandidates: FleetCapacityReport['archive_candidates'] = [];
+    const idleTtlHours = this.config.fleet?.policy?.idle_ttl_hours || 48;
+    const now = Date.now();
+
+    for (const rec of allRecords) {
+      const lease = activeLeases.find((l) => l.worktree_id === rec.id);
+      const tier = this.getEffectiveTier(rec, lease);
+
+      if (tier === 'pinned') pinnedCount++;
+      else if (tier === 'cold') coldCount++;
+      else if (tier === 'hot') {
+        hotCount++;
+        activeMountedCount++;
+      } else {
+        warmCount++;
+        activeMountedCount++;
+      }
+
+      const fullPath = path.resolve(this.repoRoot, rec.worktree_path);
+      if (fs.existsSync(fullPath) && tier !== 'cold') {
+        try {
+          const stats = fs.statSync(fullPath);
+          totalDiskBytes += stats.size || 4096;
+        } catch {}
+      }
+
+      if (tier === 'warm' && !rec.pinned && !lease) {
+        const lastActivity = rec.last_accessed_at || rec.last_activity_at || rec.updated_at;
+        const idleHours = lastActivity ? (now - new Date(lastActivity).getTime()) / (1000 * 3600) : 0;
+        if (idleHours > idleTtlHours) {
+          archiveCandidates.push({
+            id: rec.id,
+            branch: rec.branch,
+            tier,
+            idle_hours: Math.round(idleHours),
+            reason: `Idle for ${Math.round(idleHours)}h (exceeds ${idleTtlHours}h limit)`,
+          });
+        }
+      }
+    }
+
+    return {
+      analyzed_at: new Date().toISOString(),
+      max_capacity: this.config.fleet?.policy?.max_active_worktrees || 10,
+      total_worktrees: allRecords.length,
+      active_mounted_count: activeMountedCount,
+      hot_count: hotCount,
+      warm_count: warmCount,
+      cold_count: coldCount,
+      pinned_count: pinnedCount,
+      active_leases: activeLeases,
+      archive_candidates: archiveCandidates,
+      total_disk_bytes: totalDiskBytes,
+    };
+  }
 }
+
+export function parseDurationSeconds(ttl?: string, defaultMinutes = 60): number {
+  if (!ttl) return defaultMinutes * 60;
+  const raw = ttl.trim().toLowerCase();
+  if (/^\d+$/.test(raw)) {
+    return parseInt(raw, 10);
+  }
+  const match = raw.match(/^(\d+)\s*(s|sec|seconds?|m|min|minutes?|h|hr|hours?|d|days?)$/);
+  if (!match) {
+    return defaultMinutes * 60;
+  }
+  const val = parseInt(match[1], 10);
+  const unit = match[2];
+  if (unit.startsWith('s')) return val;
+  if (unit.startsWith('m')) return val * 60;
+  if (unit.startsWith('h')) return val * 3600;
+  if (unit.startsWith('d')) return val * 86400;
+  return defaultMinutes * 60;
+}
+

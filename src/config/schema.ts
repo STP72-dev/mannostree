@@ -90,11 +90,22 @@ export const AgentConfigSchema = z.object({
   }),
 });
 
+export const FleetPolicyConfigSchema = z.object({
+  max_active_worktrees: z.number().default(10),
+  idle_ttl_hours: z.number().default(48),
+  auto_archive_idle: z.boolean().default(true),
+  auto_archive_completed: z.boolean().default(false),
+  default_lease_ttl_minutes: z.number().default(60),
+  hot_threshold_hours: z.number().default(4),
+  archive_dirty_policy: z.enum(['refuse', 'stash']).default('refuse'),
+});
+
 export const FleetConfigSchema = z.object({
   default_sync_strategy: z.enum(['rebase', 'merge', 'ff-only']).default('ff-only'),
   guard_dirty_worktrees: z.boolean().default(true),
   guard_active_sessions: z.boolean().default(true),
   auto_simulate_merge: z.boolean().default(true),
+  policy: FleetPolicyConfigSchema.default({}),
 });
 
 export const MannostreeConfigSchema = z.object({
@@ -106,6 +117,7 @@ export const MannostreeConfigSchema = z.object({
   journal_dir_name: z.string().default('journal'),
   archive_dir_name: z.string().default('archives'),
   sessions_dir_name: z.string().default('sessions'),
+  leases_dir_name: z.string().default('leases'),
   base_branch_resolution: BaseBranchResolutionSchema.default({}),
   profiles: z.record(ProfileConfigSchema).default({
     default: {
@@ -132,5 +144,7 @@ export type MannostreeConfig = z.infer<typeof MannostreeConfigSchema>;
 export type ProfileConfig = z.infer<typeof ProfileConfigSchema>;
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 export type FleetConfig = z.infer<typeof FleetConfigSchema>;
+export type FleetPolicyConfig = z.infer<typeof FleetPolicyConfigSchema>;
+
 
 

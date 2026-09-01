@@ -53,7 +53,17 @@ import {
   FleetSyncReport,
   FleetConflictMatrixOptions,
   FleetConflictMatrixReport,
+  WorkspaceLease,
+  FleetTier,
+  FleetCapacityReport,
+  AutoArchiveReport,
+  FleetLeaseAcquireOptions,
+  FleetLeaseReleaseOptions,
+  FleetLeaseRenewOptions,
+  FleetAutoArchiveOptions,
 } from '../types/index.js';
+
+
 
 
 
@@ -1039,6 +1049,16 @@ export class MannostreeOrchestrator {
       );
     }
 
+    // Check lease guard
+    const leaseStatus = await this.fleetEngine.hasActiveLease(id);
+    if (leaseStatus.active && !force) {
+      throw new MannostreeError(
+        `Cannot drop actively leased worktree '${id}' (held by ${leaseStatus.lease?.holder} until ${leaseStatus.lease?.expires_at}). Use --force to break the lease.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+
     // Git removal
     await this.git.removeWorktreeAndBranch(
       record.worktree_path,
@@ -1329,6 +1349,16 @@ export class MannostreeOrchestrator {
         ExitCode.USAGE_ERROR
       );
     }
+
+    // Check lease guard
+    const leaseStatus = await this.fleetEngine.hasActiveLease(id);
+    if (leaseStatus.active && !force) {
+      throw new MannostreeError(
+        `Cannot archive actively leased worktree '${id}' (held by ${leaseStatus.lease?.holder} until ${leaseStatus.lease?.expires_at}). Use --force to proceed.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
 
     const fullPath = path.resolve(this.repoRoot, record.worktree_path);
     if (fs.existsSync(fullPath)) {
@@ -1758,7 +1788,160 @@ ${report.remediation_steps.map((s) => `1. ${s}`).join('\n')}
         : [],
     };
   }
+
+  public async fleetLeaseAcquire(
+    worktreeId: string,
+    options: FleetLeaseAcquireOptions = {}
+  ): Promise<CommandOutput<WorkspaceLease>> {
+    const lease = await this.fleetEngine.acquireLease(worktreeId, options);
+    return {
+      command: 'fleet lease acquire',
+      ok: true,
+      dry_run: false,
+      result: lease,
+      warnings: [],
+      errors: [],
+    };
+  }
+
+  public async fleetLeaseRelease(
+    worktreeId: string,
+    options: FleetLeaseReleaseOptions = {}
+  ): Promise<CommandOutput<WorkspaceLease>> {
+    const lease = await this.fleetEngine.releaseLease(worktreeId, options);
+    return {
+      command: 'fleet lease release',
+      ok: true,
+      dry_run: false,
+      result: lease,
+      warnings: [],
+      errors: [],
+    };
+  }
+
+  public async fleetLeaseRenew(
+    worktreeId: string,
+    options: FleetLeaseRenewOptions = {}
+  ): Promise<CommandOutput<WorkspaceLease>> {
+    const lease = await this.fleetEngine.renewLease(worktreeId, options);
+    return {
+      command: 'fleet lease renew',
+      ok: true,
+      dry_run: false,
+      result: lease,
+      warnings: [],
+      errors: [],
+    };
+  }
+
+  public async fleetLeaseList(
+    options: { activeOnly?: boolean } = {}
+  ): Promise<CommandOutput<WorkspaceLease[]>> {
+    const leases = await this.fleetEngine.listLeases(options);
+    return {
+      command: 'fleet lease list',
+      ok: true,
+      dry_run: false,
+      result: leases,
+      warnings: [],
+      errors: [],
+    };
+  }
+
+  public async fleetTierSet(
+    worktreeId: string,
+    tier: FleetTier
+  ): Promise<CommandOutput<WorktreeRecord>> {
+    const record = await this.fleetEngine.setTier(worktreeId, tier);
+    return {
+      command: 'fleet tier set',
+      ok: true,
+      dry_run: false,
+      result: record,
+      warnings: [],
+      errors: [],
+    };
+  }
+
+  public async fleetTierPin(worktreeId: string): Promise<CommandOutput<WorktreeRecord>> {
+    const record = await this.fleetEngine.pinWorktree(worktreeId);
+    return {
+      command: 'fleet tier pin',
+      ok: true,
+      dry_run: false,
+      result: record,
+      warnings: [],
+      errors: [],
+    };
+  }
+
+  public async fleetTierUnpin(worktreeId: string): Promise<CommandOutput<WorktreeRecord>> {
+    const record = await this.fleetEngine.unpinWorktree(worktreeId);
+    return {
+      command: 'fleet tier unpin',
+      ok: true,
+      dry_run: false,
+      result: record,
+      warnings: [],
+      errors: [],
+    };
+  }
+
+  public async fleetTierList(): Promise<
+    CommandOutput<
+      Array<{
+        id: string;
+        branch: string;
+        tier: FleetTier;
+        pinned: boolean;
+        status: string;
+        path: string;
+        last_accessed_at?: string;
+      }>
+    >
+  > {
+    const tiers = await this.fleetEngine.listTiers();
+    return {
+      command: 'fleet tier list',
+      ok: true,
+      dry_run: false,
+      result: tiers,
+      warnings: [],
+      errors: [],
+    };
+  }
+
+  public async fleetAutoArchive(
+    options: FleetAutoArchiveOptions = {}
+  ): Promise<CommandOutput<AutoArchiveReport>> {
+    const report = await this.fleetEngine.autoArchive(options);
+    return {
+      command: 'fleet auto-archive',
+      ok: true,
+      dry_run: report.dry_run,
+      result: report,
+      warnings: report.skipped_count > 0 ? [`${report.skipped_count} worktree(s) skipped by policy guards.`] : [],
+      errors: [],
+    };
+  }
+
+  public async fleetCapacityStatus(): Promise<CommandOutput<FleetCapacityReport>> {
+    const report = await this.fleetEngine.getFleetCapacityReport();
+    return {
+      command: 'fleet status',
+      ok: true,
+      dry_run: false,
+      result: report,
+      warnings:
+        report.active_mounted_count > report.max_capacity
+          ? [`Active mounted worktrees (${report.active_mounted_count}) exceed max capacity quota (${report.max_capacity}). Run auto-archive to reclaim capacity.`]
+          : [],
+      errors: [],
+    };
+  }
+
 }
+
 
 
 

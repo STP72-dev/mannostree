@@ -6,6 +6,7 @@ import {
   WorktreeRecordSchema,
   ExperimentRecordSchema,
   AgentSessionRecordSchema,
+  WorkspaceLeaseSchema,
 } from './schema.js';
 import {
   ExitCode,
@@ -14,7 +15,9 @@ import {
   WorktreeRecord,
   ExperimentRecord,
   AgentSessionRecord,
+  WorkspaceLease,
 } from '../types/index.js';
+
 import { TransactionJournal } from './journal.js';
 
 export function writeAtomicJson(filePath: string, data: unknown): void {
@@ -69,6 +72,7 @@ export class MetadataStore {
   private experimentsDir: string;
   private archiveDir: string;
   private sessionsDir: string;
+  private leasesDir: string;
   private registryFile: string;
   public journal: TransactionJournal;
 
@@ -81,7 +85,9 @@ export class MetadataStore {
     this.experimentsDir = path.join(this.metadataRoot, 'experiments');
     this.archiveDir = path.join(this.metadataRoot, config.archive_dir_name || 'archives');
     this.sessionsDir = path.join(this.metadataRoot, config.sessions_dir_name || 'sessions');
+    this.leasesDir = path.join(this.metadataRoot, config.leases_dir_name || 'leases');
     this.registryFile = path.join(this.metadataRoot, 'registry.json');
+
     this.journal = new TransactionJournal(
       repoRoot,
       config.metadata_root,
@@ -369,5 +375,74 @@ export class MetadataStore {
       fs.unlinkSync(filePath);
     }
   }
+
+  public getLeaseRecordPath(worktreeId: string): string {
+    return path.join(this.leasesDir, `${worktreeId}.json`);
+  }
+
+  public async getLease(worktreeId: string): Promise<WorkspaceLease | null> {
+    const filePath = this.getLeaseRecordPath(worktreeId);
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+
+    const data = readJson<unknown>(filePath);
+    const parsed = WorkspaceLeaseSchema.safeParse(data);
+    if (!parsed.success) {
+      throw new MannostreeError(
+        `Invalid lease record schema for ${worktreeId} in ${filePath}:\n${parsed.error.message}`,
+        ExitCode.METADATA_INCONSISTENCY
+      );
+    }
+    return parsed.data as WorkspaceLease;
+  }
+
+  public async saveLease(record: WorkspaceLease): Promise<void> {
+    const validated = WorkspaceLeaseSchema.safeParse(record);
+    if (!validated.success) {
+      throw new MannostreeError(
+        `Lease record validation failed for ${record.worktree_id}: ${validated.error.message}`,
+        ExitCode.VALIDATION_FAILURE
+      );
+    }
+
+    const filePath = this.getLeaseRecordPath(record.worktree_id);
+    writeAtomicJson(filePath, validated.data);
+  }
+
+  public async listLeases(filter?: { activeOnly?: boolean }): Promise<WorkspaceLease[]> {
+    if (!fs.existsSync(this.leasesDir)) {
+      return [];
+    }
+
+    const files = fs.readdirSync(this.leasesDir).filter((f) => f.endsWith('.json'));
+    const leases: WorkspaceLease[] = [];
+    const now = new Date().getTime();
+
+    for (const file of files) {
+      const worktreeId = file.replace(/\.json$/, '');
+      const lease = await this.getLease(worktreeId);
+      if (lease) {
+        const isExpired = new Date(lease.expires_at).getTime() <= now;
+        if (filter?.activeOnly) {
+          if (lease.status === 'active' && !isExpired) {
+            leases.push(lease);
+          }
+        } else {
+          leases.push(lease);
+        }
+      }
+    }
+
+    return leases.sort((a, b) => new Date(b.acquired_at).getTime() - new Date(a.acquired_at).getTime());
+  }
+
+  public async deleteLease(worktreeId: string): Promise<void> {
+    const filePath = this.getLeaseRecordPath(worktreeId);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  }
 }
+
 

@@ -98,6 +98,8 @@ export const LifecycleStateSchema = z.enum([
   'BROKEN',
 ]);
 
+export const FleetTierSchema = z.enum(['hot', 'warm', 'cold', 'pinned']);
+
 export const WorktreeRecordSchema = z.object({
   version: z.number().default(1),
   id: z.string(),
@@ -113,10 +115,14 @@ export const WorktreeRecordSchema = z.object({
   created_at: z.string(),
   updated_at: z.string(),
   last_activity_at: z.string().optional(),
+  last_accessed_at: z.string().optional(),
   created_by: z.string().optional(),
   profile: z.string().optional(),
   status: z.string(),
   lifecycle_state: LifecycleStateSchema,
+  pinned: z.boolean().optional(),
+  tier: FleetTierSchema.optional(),
+  active_lease_id: z.string().optional(),
   task: TaskMetadataSchema.optional(),
   artifacts: ArtifactsMetadataSchema.optional(),
   setup: SetupMetadataSchema.optional(),
@@ -129,6 +135,7 @@ export const WorktreeRecordSchema = z.object({
   health: HealthMetadataSchema.optional(),
   tags: z.array(z.string()).optional(),
 });
+
 
 export const RegistryRecordSchema = z.object({
   version: z.number().default(1),
@@ -529,6 +536,62 @@ export const FleetConflictMatrixReportSchema = z.object({
     })
   ),
 });
+
+export const WorkspaceLeaseSchema = z.object({
+  lease_id: z.string(),
+  worktree_id: z.string(),
+  holder: z.string(),
+  purpose: z.string(),
+  acquired_at: z.string(),
+  expires_at: z.string(),
+  ttl_seconds: z.number().int().positive(),
+  status: z.enum(['active', 'expired', 'released']),
+  renew_count: z.number().int().nonnegative().default(0),
+});
+
+export const FleetCapacityReportSchema = z.object({
+  analyzed_at: z.string(),
+  max_capacity: z.number().int().nonnegative(),
+  total_worktrees: z.number().int().nonnegative(),
+  active_mounted_count: z.number().int().nonnegative(),
+  hot_count: z.number().int().nonnegative(),
+  warm_count: z.number().int().nonnegative(),
+  cold_count: z.number().int().nonnegative(),
+  pinned_count: z.number().int().nonnegative(),
+  active_leases: z.array(WorkspaceLeaseSchema),
+  archive_candidates: z.array(
+    z.object({
+      id: z.string(),
+      branch: z.string(),
+      tier: FleetTierSchema,
+      idle_hours: z.number(),
+      reason: z.string(),
+    })
+  ),
+  total_disk_bytes: z.number().int().nonnegative(),
+});
+
+export const AutoArchiveReportSchema = z.object({
+  timestamp: z.string(),
+  dry_run: z.boolean(),
+  total_evaluated: z.number().int().nonnegative(),
+  archived_count: z.number().int().nonnegative(),
+  skipped_count: z.number().int().nonnegative(),
+  archived_worktrees: z.array(
+    z.object({
+      id: z.string(),
+      branch: z.string(),
+      reason: z.string(),
+    })
+  ),
+  skipped_worktrees: z.array(
+    z.object({
+      id: z.string(),
+      reason: z.string(),
+    })
+  ),
+});
+
 
 
 
