@@ -1,13 +1,17 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { MannostreeConfig, ProfileConfig } from '../config/schema.js';
 import { GitEngine } from '../git/engine.js';
 import { MetadataStore } from '../metadata/store.js';
 import { resolveBaseBranch } from '../git/base-resolver.js';
+import { PublishEngine } from './publish.js';
 import {
   ExitCode,
   ExperimentRecord,
   MannostreeError,
   WorktreeRecord,
+  ParallelPublishOptions,
+  ParallelPublishResult,
 } from '../types/index.js';
 
 export interface ParallelSpawnOptions {
@@ -456,4 +460,193 @@ export class ParallelEngine {
       };
     }
   }
+
+  public async publishWinner(
+    options: ParallelPublishOptions,
+    publishEngine: PublishEngine
+  ): Promise<ParallelPublishResult> {
+    const {
+      featureName,
+      title,
+      draft = this.config.publish?.default_draft ?? true,
+      push = false,
+      targetBase,
+      preview = false,
+      dryRun = false,
+      force = false,
+      exportPrBody,
+    } = options;
+
+    if (!featureName || featureName.trim().length === 0) {
+      throw new MannostreeError(
+        'A valid feature name is required for parallel publish.',
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    const sanitizedFeature = featureName.replace(/[^a-zA-Z0-9._-]/g, '-').replace(/\/+/g, '-');
+    const experiment = await this.store.getExperiment(sanitizedFeature);
+
+    if (!experiment) {
+      throw new MannostreeError(
+        `Experiment '${sanitizedFeature}' not found in metadata store.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    if (!experiment.winner) {
+      throw new MannostreeError(
+        `No winning variant has been selected for experiment '${sanitizedFeature}'. Run 'parallel pick' or 'parallel eval --auto-pick' first.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    const winnerRecord = await this.store.getWorktree(experiment.winner);
+    if (!winnerRecord) {
+      throw new MannostreeError(
+        `Worktree record for winner '${experiment.winner}' not found.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    // Load all variant records
+    const allVariants: WorktreeRecord[] = [];
+    for (const vId of experiment.variants) {
+      const vRec = await this.store.getWorktree(vId);
+      if (vRec) {
+        allVariants.push(vRec);
+      }
+    }
+
+    // Validation / Quality gate guard
+    const validationPassed = winnerRecord.validation?.status !== 'failed';
+    if (!validationPassed && !force) {
+      throw new MannostreeError(
+        `Validation failed for winning variant '${winnerRecord.id}'. Use --force to publish anyway.`,
+        ExitCode.VALIDATION_FAILURE
+      );
+    }
+
+    const baseBranch = targetBase || winnerRecord.base_branch || experiment.base_branch || 'main';
+    const prTitle =
+      title ||
+      `feat(${experiment.feature}): implement ${experiment.feature} (${winnerRecord.variant || winnerRecord.id} winner)`;
+
+    const prBody = publishEngine.assembleParallelPrBody(
+      experiment,
+      winnerRecord,
+      allVariants,
+      experiment.eval_matrix
+    );
+
+    const relBodyPath = path.join(this.config.artifact_dir_name, 'pr-body.md');
+    const fullBodyPath = path.join(winnerRecord.worktree_path, relBodyPath);
+
+    if (!dryRun) {
+      if (!preview && fs.existsSync(winnerRecord.worktree_path)) {
+        const artifactDir = path.dirname(fullBodyPath);
+        if (!fs.existsSync(artifactDir)) {
+          fs.mkdirSync(artifactDir, { recursive: true });
+        }
+        fs.writeFileSync(fullBodyPath, prBody, 'utf-8');
+      }
+
+      if (exportPrBody) {
+        const customExportPath = path.resolve(this.repoRoot, exportPrBody);
+        const exportDir = path.dirname(customExportPath);
+        if (!fs.existsSync(exportDir)) {
+          fs.mkdirSync(exportDir, { recursive: true });
+        }
+        fs.writeFileSync(customExportPath, prBody, 'utf-8');
+      }
+    }
+
+    const now = new Date().toISOString();
+
+    if (preview || dryRun || !push) {
+      return {
+        feature_name: sanitizedFeature,
+        winner_variant: winnerRecord.id,
+        branch: winnerRecord.branch,
+        base_branch: baseBranch,
+        pushed: false,
+        pr_number: null,
+        pr_url: null,
+        pr_body_file: relBodyPath,
+        pr_title: prTitle,
+        pr_body: prBody,
+        published_at: now,
+        comparison_embedded: !!(experiment.eval_matrix && experiment.eval_matrix.variants.length > 0),
+        quality_gates_passed: validationPassed,
+        evaluated_variants: experiment.variants,
+      };
+    }
+
+    // Remote push requested
+    let prUrl: string | null = null;
+    let prNumber: number | null = null;
+    const remote = this.config.publish?.default_remote || 'origin';
+
+    if (fs.existsSync(winnerRecord.worktree_path)) {
+      await this.git.exec(['push', '-u', remote, winnerRecord.branch], winnerRecord.worktree_path);
+
+      try {
+        const ghArgs = [
+          'pr',
+          'create',
+          '--head',
+          winnerRecord.branch,
+          '--base',
+          baseBranch,
+          '--title',
+          prTitle,
+          '--body-file',
+          fullBodyPath,
+        ];
+        if (draft) {
+          ghArgs.push('--draft');
+        }
+
+        const ghRes = await publishEngine.ghExecutor(ghArgs, winnerRecord.worktree_path);
+        prUrl = ghRes.stdout.trim();
+        const numMatch = prUrl.match(/\/pull\/(\d+)/);
+        if (numMatch) {
+          prNumber = parseInt(numMatch[1], 10);
+        }
+      } catch {
+        // gh CLI fallback
+      }
+    }
+
+    winnerRecord.publish = {
+      pushed: true,
+      published_at: now,
+      pr_url: prUrl,
+      pr_number: prNumber,
+    };
+    winnerRecord.updated_at = now;
+    await this.store.saveWorktree(winnerRecord);
+
+    experiment.status = 'completed';
+    experiment.updated_at = now;
+    await this.store.saveExperiment(experiment);
+
+    return {
+      feature_name: sanitizedFeature,
+      winner_variant: winnerRecord.id,
+      branch: winnerRecord.branch,
+      base_branch: baseBranch,
+      pushed: true,
+      pr_number: prNumber,
+      pr_url: prUrl,
+      pr_body_file: relBodyPath,
+      pr_title: prTitle,
+      pr_body: prBody,
+      published_at: now,
+      comparison_embedded: !!(experiment.eval_matrix && experiment.eval_matrix.variants.length > 0),
+      quality_gates_passed: validationPassed,
+      evaluated_variants: experiment.variants,
+    };
+  }
 }
+

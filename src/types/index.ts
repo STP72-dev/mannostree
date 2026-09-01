@@ -701,6 +701,108 @@ export interface FleetAutoArchiveOptions {
   yes?: boolean;
 }
 
+export interface ParallelPublishOptions {
+  featureName?: string;
+  title?: string;
+  draft?: boolean;
+  push?: boolean;
+  targetBase?: string;
+  preview?: boolean;
+  dryRun?: boolean;
+  force?: boolean;
+  exportPrBody?: string;
+}
+
+export interface ParallelPublishResult {
+  feature_name: string;
+  winner_variant: string;
+  branch: string;
+  base_branch: string;
+  pushed: boolean;
+  pr_number?: number | null;
+  pr_url?: string | null;
+  pr_body_file?: string;
+  pr_title: string;
+  pr_body: string;
+  published_at: string;
+  comparison_embedded: boolean;
+  quality_gates_passed: boolean;
+  evaluated_variants: string[];
+}
+
+export interface FleetMergeSyncCandidate {
+  worktree_id: string;
+  branch: string;
+  head_sha: string;
+  can_merge_cleanly: boolean;
+  conflicting_files: string[];
+  status: 'READY' | 'MERGED' | 'CONFLICT_BLOCKED' | 'SKIPPED';
+  message?: string;
+}
+
+export interface FleetMergeSyncReport {
+  timestamp: string;
+  target_branch: string;
+  dry_run: boolean;
+  total_candidates: number;
+  clean_count: number;
+  conflict_count: number;
+  integrated_count: number;
+  candidates: FleetMergeSyncCandidate[];
+  release_manifest_path?: string;
+}
+
+export interface FleetMergeSyncOptions {
+  target: string;
+  candidates?: string[];
+  preview?: boolean;
+  dryRun?: boolean;
+  yes?: boolean;
+  ignoreConflicts?: boolean;
+  createTargetIfMissing?: boolean;
+}
+
+export interface FleetBatchPublishItem {
+  worktree_id: string;
+  branch: string;
+  status: 'PUBLISHED' | 'SKIPPED' | 'FAILED';
+  pr_number?: number | null;
+  pr_url?: string | null;
+  message?: string;
+}
+
+export interface FleetBatchPublishReport {
+  timestamp: string;
+  total_targeted: number;
+  published_count: number;
+  skipped_count: number;
+  failed_count: number;
+  results: FleetBatchPublishItem[];
+}
+
+export interface FleetBatchPublishOptions {
+  all?: boolean;
+  selected?: string[];
+  draft?: boolean;
+  push?: boolean;
+  targetBase?: string;
+  preview?: boolean;
+  dryRun?: boolean;
+  force?: boolean;
+}
+
+export interface ReleaseManifestRecord {
+  version: number;
+  target_branch: string;
+  assembled_at: string;
+  head_commit: string;
+  integrated_worktrees: Array<{
+    worktree_id: string;
+    branch: string;
+    commit_sha: string;
+  }>;
+}
+
 export class MannostreeError extends Error {
   constructor(
     message: string,
@@ -711,6 +813,7 @@ export class MannostreeError extends Error {
     this.name = 'MannostreeError';
   }
 }
+
 
 
 

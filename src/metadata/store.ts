@@ -7,6 +7,7 @@ import {
   ExperimentRecordSchema,
   AgentSessionRecordSchema,
   WorkspaceLeaseSchema,
+  ReleaseManifestRecordSchema,
 } from './schema.js';
 import {
   ExitCode,
@@ -16,6 +17,7 @@ import {
   ExperimentRecord,
   AgentSessionRecord,
   WorkspaceLease,
+  ReleaseManifestRecord,
 } from '../types/index.js';
 
 import { TransactionJournal } from './journal.js';
@@ -380,6 +382,67 @@ export class MetadataStore {
     return path.join(this.leasesDir, `${worktreeId}.json`);
   }
 
+  public getReleaseManifestPath(targetBranch: string): string {
+    const slug = targetBranch.replace(/\//g, '_');
+    const releasesDir = path.join(this.metadataRoot, this.config.releases_dir_name || 'releases');
+    return path.join(releasesDir, `${slug}.json`);
+  }
+
+  public async getReleaseManifest(targetBranch: string): Promise<ReleaseManifestRecord | null> {
+    const filePath = this.getReleaseManifestPath(targetBranch);
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+
+    const data = readJson<unknown>(filePath);
+    const parsed = ReleaseManifestRecordSchema.safeParse(data);
+    if (!parsed.success) {
+      throw new MannostreeError(
+        `Invalid release manifest schema for ${targetBranch} in ${filePath}:\n${parsed.error.message}`,
+        ExitCode.METADATA_INCONSISTENCY
+      );
+    }
+    return parsed.data as ReleaseManifestRecord;
+  }
+
+  public async saveReleaseManifest(manifest: ReleaseManifestRecord): Promise<void> {
+    const validated = ReleaseManifestRecordSchema.safeParse(manifest);
+    if (!validated.success) {
+      throw new MannostreeError(
+        `Release manifest validation failed for ${manifest.target_branch}: ${validated.error.message}`,
+        ExitCode.VALIDATION_FAILURE
+      );
+    }
+
+    const filePath = this.getReleaseManifestPath(manifest.target_branch);
+    writeAtomicJson(filePath, validated.data);
+  }
+
+  public async listReleaseManifests(): Promise<ReleaseManifestRecord[]> {
+    const releasesDir = path.join(this.metadataRoot, this.config.releases_dir_name || 'releases');
+    if (!fs.existsSync(releasesDir)) {
+      return [];
+    }
+
+    const files = fs.readdirSync(releasesDir).filter((f) => f.endsWith('.json'));
+    const manifests: ReleaseManifestRecord[] = [];
+
+    for (const file of files) {
+      const fullPath = path.join(releasesDir, file);
+      try {
+        const raw = readJson<unknown>(fullPath);
+        const parsed = ReleaseManifestRecordSchema.safeParse(raw);
+        if (parsed.success) {
+          manifests.push(parsed.data as ReleaseManifestRecord);
+        }
+      } catch {
+        // ignore unparseable
+      }
+    }
+
+    return manifests.sort((a, b) => new Date(b.assembled_at).getTime() - new Date(a.assembled_at).getTime());
+  }
+
   public async getLease(worktreeId: string): Promise<WorkspaceLease | null> {
     const filePath = this.getLeaseRecordPath(worktreeId);
     if (!fs.existsSync(filePath)) {
@@ -444,5 +507,6 @@ export class MetadataStore {
     }
   }
 }
+
 
 

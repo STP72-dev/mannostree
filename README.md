@@ -478,15 +478,46 @@ mannostree fleet auto-archive --preview
 mannostree fleet auto-archive --yes
 ```
 
-#### 32. Fleet Capacity & Status Dashboard (`fleet status`)
-Display real-time fleet capacity, active mounted worktrees vs quota limits, lifecycle tier distributions, active leases, and disk footprint:
-```bash
-# Display formatted fleet capacity dashboard
-mannostree fleet status
+---
 
-# Machine-readable capacity metrics in JSON
-mannostree fleet status --json
+### Parallel Winner Publishing & Release Merge-Sync (Movement 5)
+
+#### 33. Parallel Winner Publishing (`parallel publish`)
+Publish the explicitly promoted winner of a parallel experiment directly to a GitHub Pull Request with rich auto-compiled benchmark scorecards, solution comparisons, quality gate logs, and reference variant links:
+```bash
+# Preview compiled PR description with embedded benchmark scorecard table
+mannostree parallel publish auth-spike --preview
+
+# Export compiled PR markdown artifact
+mannostree parallel publish auth-spike --preview --export-pr ./dist/auth-pr.md
+
+# Push winning branch to remote origin and open draft Pull Request
+mannostree parallel publish auth-spike --draft --push
 ```
+
+#### 34. Multi-Branch Release Merge-Sync (`fleet merge-sync`)
+Simulate in-memory 3-way merges across candidate feature branches into a shared integration/release trunk and automatically generate versioned release manifests:
+```bash
+# Simulate candidate mergeability against target branch without modifying git state
+mannostree fleet merge-sync --target staging --preview
+
+# Execute sequential release assembly and record release manifest
+mannostree fleet merge-sync --target staging --yes
+
+# Integrate only clean candidates, skipping conflicting branches
+mannostree fleet merge-sync --target staging --yes --ignore-conflicts
+```
+
+#### 35. Fleet Batch Pull Request Publisher (`fleet publish`)
+Batch-publish pull requests across multiple completed fleet workspaces with automated concurrency lease cleanup:
+```bash
+# Preview batch publishing across all eligible ready worktrees
+mannostree fleet publish --all --preview
+
+# Batch publish selected worktrees and push branches
+mannostree fleet publish --selected feature-auth feature-cache --push --draft
+```
+
 
 ---
 

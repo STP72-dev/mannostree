@@ -303,5 +303,60 @@ export function registerParallelCommand(program: Command): void {
         return lines.join('\n');
       });
     });
+
+  // parallel publish
+  parallelCmd
+    .command('publish <feature>')
+    .description('Publish winning variant to Pull Request with multi-variant benchmark comparisons')
+    .option('--title <title>', 'Custom PR title')
+    .option('--draft', 'Create draft Pull Request', true)
+    .option('--no-draft', 'Create ready-for-review Pull Request')
+    .option('--push', 'Push winner branch to remote origin', false)
+    .option('--target-base <branch>', 'Base branch to target')
+    .option('--preview', 'Preview compiled PR body without pushing or creating PR', false)
+    .option('--export-pr <path>', 'Export compiled PR markdown to specified path')
+    .option('--force', 'Force publish even if quality gates report warnings', false)
+    .action(async (feature: string, cmdOptions: any) => {
+      const globalOpts = program.opts<GlobalOptions>();
+      const cwd = globalOpts.cwd ? globalOpts.cwd : process.cwd();
+
+      const config = loadConfig(globalOpts.config, cwd);
+      const git = new GitEngine(cwd);
+      const repoRoot = await git.getRepoRoot();
+
+      const orchestrator = new MannostreeOrchestrator(repoRoot, config);
+
+      const result = await orchestrator.parallelPublish({
+        featureName: feature,
+        title: cmdOptions.title,
+        draft: cmdOptions.draft,
+        push: cmdOptions.push,
+        targetBase: cmdOptions.targetBase,
+        preview: cmdOptions.preview,
+        dryRun: globalOpts.dryRun,
+        exportPrBody: cmdOptions.exportPr,
+        force: cmdOptions.force,
+      });
+
+      formatOutput(result, globalOpts, (data) => {
+        const lines: string[] = [];
+        lines.push(`Parallel Winner Published for '${data.feature_name}':`);
+        lines.push(`  Winner:          ${data.winner_variant} (${data.branch})`);
+        lines.push(`  Target Base:     ${data.base_branch}`);
+        lines.push(`  PR Title:        ${data.pr_title}`);
+        lines.push(`  Pushed to Remote: ${data.pushed ? 'Yes' : 'No (Preview / Local)'}`);
+        if (data.pr_url) {
+          lines.push(`  PR URL:          ${data.pr_url}`);
+        } else {
+          lines.push(`  PR Body File:    ${data.pr_body_file}`);
+          if (!data.pushed) {
+            lines.push('  Instructions:    Run with --push to push branch and open Pull Request.');
+          }
+        }
+        lines.push(`  Benchmark Matrix Embedded: ${data.comparison_embedded ? 'Yes' : 'No'}`);
+        return lines.join('\n');
+      });
+    });
 }
+
 

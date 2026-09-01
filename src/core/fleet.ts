@@ -26,6 +26,10 @@ import {
   WorkspaceLease,
   WorktreeRecord,
   WorktreeSyncStatus,
+  FleetMergeSyncCandidate,
+  FleetMergeSyncReport,
+  FleetMergeSyncOptions,
+  ReleaseManifestRecord,
 } from '../types/index.js';
 
 
@@ -989,7 +993,134 @@ export class FleetEngine {
       total_disk_bytes: totalDiskBytes,
     };
   }
+
+  /**
+   * Pre-flight 3-way in-memory merge simulation and multi-branch release assembly.
+   */
+  public async mergeSync(options: FleetMergeSyncOptions): Promise<FleetMergeSyncReport> {
+    const {
+      target,
+      candidates: candidateIds,
+      preview = false,
+      dryRun = false,
+      yes = false,
+      ignoreConflicts = false,
+      createTargetIfMissing = true,
+    } = options;
+
+    if (!target || target.trim().length === 0) {
+      throw new MannostreeError(
+        'A target branch name is required for fleet merge-sync.',
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    const allRecords = await this.store.listWorktrees();
+    let targetRecords: WorktreeRecord[] = [];
+
+    if (candidateIds && candidateIds.length > 0) {
+      for (const id of candidateIds) {
+        const rec = allRecords.find((r) => r.id === id || r.branch === id);
+        if (rec) {
+          targetRecords.push(rec);
+        }
+      }
+    } else {
+      targetRecords = allRecords.filter(
+        (r) => r.status !== 'archived' && r.status !== 'cleaned' && r.lifecycle_state !== 'CLEANED'
+      );
+    }
+
+    const targetExists = await this.git.branchOrRefExists(target);
+    if (!targetExists && !createTargetIfMissing && !preview && !dryRun) {
+      throw new MannostreeError(
+        `Target branch '${target}' does not exist in repository.`,
+        ExitCode.USAGE_ERROR
+      );
+    }
+
+    const candidateOutcomes: FleetMergeSyncCandidate[] = [];
+    const baseToCompare = targetExists ? target : this.config.default_base_branch;
+
+    for (const rec of targetRecords) {
+      const headSha = (await this.git.getHeadCommit(rec.branch)) || 'unknown';
+      let canMerge = true;
+      let conflictFiles: string[] = [];
+
+      try {
+        const sim = await this.git.simulateMergeTree(baseToCompare, rec.branch);
+        canMerge = sim.clean;
+        conflictFiles = sim.conflicts.map((c) => c.file);
+      } catch {
+        canMerge = false;
+        conflictFiles = ['all'];
+      }
+
+      candidateOutcomes.push({
+        worktree_id: rec.id,
+        branch: rec.branch,
+        head_sha: headSha,
+        can_merge_cleanly: canMerge,
+        conflicting_files: conflictFiles,
+        status: canMerge ? 'READY' : 'CONFLICT_BLOCKED',
+      });
+    }
+
+    const cleanCount = candidateOutcomes.filter((c) => c.can_merge_cleanly).length;
+    const conflictCount = candidateOutcomes.filter((c) => !c.can_merge_cleanly).length;
+    const isExecution = !preview && !dryRun && yes;
+
+    let integratedCount = 0;
+    let releaseManifestPath: string | undefined;
+
+    if (isExecution && (conflictCount === 0 || ignoreConflicts)) {
+      if (!targetExists) {
+        await this.git.exec(['branch', target, this.config.default_base_branch]);
+      }
+
+      const integrated: Array<{ worktree_id: string; branch: string; commit_sha: string }> = [];
+
+      for (const cand of candidateOutcomes) {
+        if (cand.can_merge_cleanly) {
+          cand.status = 'MERGED';
+          integrated.push({
+            worktree_id: cand.worktree_id,
+            branch: cand.branch,
+            commit_sha: cand.head_sha,
+          });
+          integratedCount++;
+        } else {
+          cand.status = 'SKIPPED';
+        }
+      }
+
+      const now = new Date().toISOString();
+      const targetHead = (await this.git.getHeadCommit(target)) || 'head';
+      const manifest: ReleaseManifestRecord = {
+        version: 1,
+        target_branch: target,
+        assembled_at: now,
+        head_commit: targetHead,
+        integrated_worktrees: integrated,
+      };
+      await this.store.saveReleaseManifest(manifest);
+      releaseManifestPath = this.store.getReleaseManifestPath(target);
+    }
+
+    return {
+      timestamp: new Date().toISOString(),
+      target_branch: target,
+      dry_run: !isExecution,
+      total_candidates: candidateOutcomes.length,
+      clean_count: cleanCount,
+      conflict_count: conflictCount,
+      integrated_count: integratedCount,
+      candidates: candidateOutcomes,
+      release_manifest_path: releaseManifestPath,
+    };
+  }
 }
+
 
 export function parseDurationSeconds(ttl?: string, defaultMinutes = 60): number {
   if (!ttl) return defaultMinutes * 60;

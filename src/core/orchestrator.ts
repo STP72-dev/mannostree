@@ -61,6 +61,12 @@ import {
   FleetLeaseReleaseOptions,
   FleetLeaseRenewOptions,
   FleetAutoArchiveOptions,
+  ParallelPublishOptions,
+  ParallelPublishResult,
+  FleetMergeSyncOptions,
+  FleetMergeSyncReport,
+  FleetBatchPublishOptions,
+  FleetBatchPublishReport,
 } from '../types/index.js';
 
 
@@ -1940,7 +1946,54 @@ ${report.remediation_steps.map((s) => `1. ${s}`).join('\n')}
     };
   }
 
+  public async parallelPublish(
+    options: ParallelPublishOptions
+  ): Promise<CommandOutput<ParallelPublishResult>> {
+    const result = await this.parallelEngine.publishWinner(options, this.publishEngine);
+    return {
+      command: 'parallel publish',
+      ok: true,
+      dry_run: !!options.dryRun || !!options.preview,
+      result,
+      warnings: !result.pushed
+        ? [`PR prepared in preview/prepare-only mode (${result.pr_body_file}). Supply --push to push to remote.`]
+        : [],
+      errors: [],
+    };
+  }
+
+  public async fleetMergeSync(
+    options: FleetMergeSyncOptions
+  ): Promise<CommandOutput<FleetMergeSyncReport>> {
+    const report = await this.fleetEngine.mergeSync(options);
+    return {
+      command: 'fleet merge-sync',
+      ok: report.conflict_count === 0 || !!options.ignoreConflicts,
+      dry_run: report.dry_run,
+      result: report,
+      warnings:
+        report.conflict_count > 0
+          ? [`${report.conflict_count} candidate branch(es) have merge conflicts with target '${options.target}'.`]
+          : [],
+      errors: [],
+    };
+  }
+
+  public async fleetBatchPublish(
+    options: FleetBatchPublishOptions = {}
+  ): Promise<CommandOutput<FleetBatchPublishReport>> {
+    const report = await this.publishEngine.batchPublish(options, this.store, this.fleetEngine);
+    return {
+      command: 'fleet publish',
+      ok: report.failed_count === 0,
+      dry_run: !!options.dryRun || !!options.preview,
+      result: report,
+      warnings: report.skipped_count > 0 ? [`${report.skipped_count} worktree(s) skipped.`] : [],
+      errors: [],
+    };
+  }
 }
+
 
 
 

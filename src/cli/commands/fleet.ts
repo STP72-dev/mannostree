@@ -433,5 +433,119 @@ export function registerFleetCommand(program: Command): void {
         return lines.join('\n');
       });
     });
+
+  // fleet merge-sync
+  fleetCmd
+    .command('merge-sync')
+    .description('Simulate and execute multi-branch release assembly and in-memory 3-way merge')
+    .requiredOption('--target <branch>', 'Target integration/release branch (e.g. staging, release/2026-09)')
+    .option('--candidates <ids...>', 'Specific candidate worktrees to integrate')
+    .option('--preview', 'Simulate merge without creating or updating target branch', false)
+    .option('-y, --yes', 'Confirm release branch creation and merge assembly', false)
+    .option('--ignore-conflicts', 'Skip conflicting branches and merge only clean candidates', false)
+    .action(async (cmdOptions: any) => {
+      const globalOpts = program.opts<GlobalOptions>();
+      const cwd = globalOpts.cwd ? globalOpts.cwd : process.cwd();
+      const config = loadConfig(globalOpts.config, cwd);
+      const git = new GitEngine(cwd);
+      const repoRoot = await git.getRepoRoot();
+      const orchestrator = new MannostreeOrchestrator(repoRoot, config);
+
+      const result = await orchestrator.fleetMergeSync({
+        target: cmdOptions.target,
+        candidates: cmdOptions.candidates,
+        preview: cmdOptions.preview || globalOpts.dryRun,
+        dryRun: globalOpts.dryRun,
+        yes: cmdOptions.yes,
+        ignoreConflicts: cmdOptions.ignoreConflicts,
+      });
+
+      formatOutput(result, globalOpts, (report) => {
+        const lines: string[] = [];
+        const mode = report.dry_run ? ' [PREVIEW]' : '';
+        lines.push(chalk.bold(`Fleet Merge-Sync Release Assembly${mode}:`));
+        lines.push(`  Target Branch:       ${chalk.bold.cyan(report.target_branch)}`);
+        lines.push(`  Timestamp:           ${report.timestamp}`);
+        lines.push(`  Total Candidates:    ${report.total_candidates}`);
+        lines.push(`  Clean Mergeable:     ${chalk.green.bold(report.clean_count)}`);
+        lines.push(`  Conflict Blocked:    ${report.conflict_count > 0 ? chalk.red.bold(report.conflict_count) : chalk.green('0 (Clean)')}`);
+        if (!report.dry_run) {
+          lines.push(`  Integrated:          ${chalk.green.bold(report.integrated_count)}`);
+          if (report.release_manifest_path) {
+            lines.push(`  Release Manifest:    ${report.release_manifest_path}`);
+          }
+        }
+        lines.push('');
+        lines.push(chalk.bold('Candidate Branches:'));
+
+        for (const c of report.candidates) {
+          const statusStr = c.can_merge_cleanly ? chalk.green('[CLEAN]') : chalk.red.bold('[CONFLICT]');
+          lines.push(`  ${statusStr} ${chalk.bold(c.worktree_id)} (${c.branch} @ ${c.head_sha.slice(0, 7)})`);
+          if (c.conflicting_files.length > 0) {
+            lines.push(`     Conflicts: ${c.conflicting_files.join(', ')}`);
+          }
+        }
+
+        return lines.join('\n');
+      });
+    });
+
+  // fleet publish
+  fleetCmd
+    .command('publish')
+    .description('Batch-publish pull requests across multiple completed fleet worktrees')
+    .option('--all', 'Publish all eligible ready worktrees', false)
+    .option('--selected <ids...>', 'Specific worktree IDs to publish')
+    .option('--draft', 'Create draft Pull Requests', true)
+    .option('--no-draft', 'Create ready-for-review Pull Requests')
+    .option('--push', 'Push branches to remote origin', false)
+    .option('--target-base <branch>', 'Base branch to target')
+    .option('--preview', 'Preview batch actions without remote push or PR creation', false)
+    .option('--force', 'Force publish even if worktrees contain uncommitted changes', false)
+    .action(async (cmdOptions: any) => {
+      const globalOpts = program.opts<GlobalOptions>();
+      const cwd = globalOpts.cwd ? globalOpts.cwd : process.cwd();
+      const config = loadConfig(globalOpts.config, cwd);
+      const git = new GitEngine(cwd);
+      const repoRoot = await git.getRepoRoot();
+      const orchestrator = new MannostreeOrchestrator(repoRoot, config);
+
+      const result = await orchestrator.fleetBatchPublish({
+        all: cmdOptions.all,
+        selected: cmdOptions.selected,
+        draft: cmdOptions.draft,
+        push: cmdOptions.push,
+        targetBase: cmdOptions.targetBase,
+        preview: cmdOptions.preview || globalOpts.dryRun,
+        dryRun: globalOpts.dryRun,
+        force: cmdOptions.force,
+      });
+
+      formatOutput(result, globalOpts, (report) => {
+        const lines: string[] = [];
+        const mode = report.results.some((r) => r.message?.includes('Preview')) ? ' [PREVIEW]' : '';
+        lines.push(chalk.bold(`Fleet Batch Publish Report${mode}:`));
+        lines.push(`  Total Targeted:  ${report.total_targeted}`);
+        lines.push(`  Published:       ${chalk.green.bold(report.published_count)}`);
+        lines.push(`  Skipped:         ${chalk.yellow.bold(report.skipped_count)}`);
+        lines.push(`  Failed:          ${chalk.red.bold(report.failed_count)}`);
+        lines.push('');
+
+        for (const item of report.results) {
+          const statusColor =
+            item.status === 'PUBLISHED' ? chalk.green : item.status === 'SKIPPED' ? chalk.yellow : chalk.red;
+          lines.push(`  ${statusColor(`[${item.status}]`)} ${chalk.bold(item.worktree_id)} (${item.branch})`);
+          if (item.pr_url) {
+            lines.push(`     PR URL: ${item.pr_url}`);
+          }
+          if (item.message) {
+            lines.push(`     Info:   ${item.message}`);
+          }
+        }
+
+        return lines.join('\n');
+      });
+    });
 }
+
 

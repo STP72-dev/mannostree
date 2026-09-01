@@ -118,6 +118,7 @@ export const MannostreeConfigSchema = z.object({
   archive_dir_name: z.string().default('archives'),
   sessions_dir_name: z.string().default('sessions'),
   leases_dir_name: z.string().default('leases'),
+  releases_dir_name: z.string().default('releases'),
   base_branch_resolution: BaseBranchResolutionSchema.default({}),
   profiles: z.record(ProfileConfigSchema).default({
     default: {

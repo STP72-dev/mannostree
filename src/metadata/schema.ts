@@ -592,6 +592,78 @@ export const AutoArchiveReportSchema = z.object({
   ),
 });
 
+export const ParallelPublishResultSchema = z.object({
+  feature_name: z.string(),
+  winner_variant: z.string(),
+  branch: z.string(),
+  base_branch: z.string(),
+  pushed: z.boolean(),
+  pr_number: z.number().int().nullable().optional(),
+  pr_url: z.string().nullable().optional(),
+  pr_body_file: z.string().optional(),
+  pr_title: z.string(),
+  pr_body: z.string(),
+  published_at: z.string(),
+  comparison_embedded: z.boolean(),
+  quality_gates_passed: z.boolean(),
+  evaluated_variants: z.array(z.string()),
+});
+
+export const FleetMergeSyncCandidateSchema = z.object({
+  worktree_id: z.string(),
+  branch: z.string(),
+  head_sha: z.string(),
+  can_merge_cleanly: z.boolean(),
+  conflicting_files: z.array(z.string()),
+  status: z.enum(['READY', 'MERGED', 'CONFLICT_BLOCKED', 'SKIPPED']),
+  message: z.string().optional(),
+});
+
+export const FleetMergeSyncReportSchema = z.object({
+  timestamp: z.string(),
+  target_branch: z.string(),
+  dry_run: z.boolean(),
+  total_candidates: z.number().int().nonnegative(),
+  clean_count: z.number().int().nonnegative(),
+  conflict_count: z.number().int().nonnegative(),
+  integrated_count: z.number().int().nonnegative(),
+  candidates: z.array(FleetMergeSyncCandidateSchema),
+  release_manifest_path: z.string().optional(),
+});
+
+export const FleetBatchPublishItemSchema = z.object({
+  worktree_id: z.string(),
+  branch: z.string(),
+  status: z.enum(['PUBLISHED', 'SKIPPED', 'FAILED']),
+  pr_number: z.number().int().nullable().optional(),
+  pr_url: z.string().nullable().optional(),
+  message: z.string().optional(),
+});
+
+export const FleetBatchPublishReportSchema = z.object({
+  timestamp: z.string(),
+  total_targeted: z.number().int().nonnegative(),
+  published_count: z.number().int().nonnegative(),
+  skipped_count: z.number().int().nonnegative(),
+  failed_count: z.number().int().nonnegative(),
+  results: z.array(FleetBatchPublishItemSchema),
+});
+
+export const ReleaseManifestRecordSchema = z.object({
+  version: z.number().default(1),
+  target_branch: z.string(),
+  assembled_at: z.string(),
+  head_commit: z.string(),
+  integrated_worktrees: z.array(
+    z.object({
+      worktree_id: z.string(),
+      branch: z.string(),
+      commit_sha: z.string(),
+    })
+  ),
+});
+
+
 
 
 
