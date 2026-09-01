@@ -27,12 +27,39 @@ export const CleanupConfigSchema = z.object({
   archive_on_drop: z.boolean().default(true),
 });
 
+export const ParallelEvalMatrixProbeConfigSchema = z.object({
+  name: z.string(),
+  command: z.string(),
+  category: z.enum(['test', 'lint', 'benchmark', 'size', 'custom']).default('custom'),
+  mandatory: z.boolean().default(false),
+  timeout_seconds: z.number().default(120),
+  weight: z.number().default(1.0),
+  higher_is_better: z.boolean().default(false),
+  metric_unit: z.string().optional(),
+  metric_regex: z.string().optional(),
+});
+
+export const ParallelScoringWeightsConfigSchema = z.object({
+  correctness: z.number().default(0.4),
+  performance: z.number().default(0.3),
+  maintainability_churn: z.number().default(0.2),
+  size: z.number().default(0.1),
+});
+
 export const ParallelConfigSchema = z.object({
   max_variants: z.number().default(5),
   require_shared_base: z.boolean().default(true),
   require_same_profile: z.boolean().default(true),
   default_plan_mode: z.string().default('shared'),
+  eval_matrix: z.array(ParallelEvalMatrixProbeConfigSchema).default([]),
+  scoring_weights: ParallelScoringWeightsConfigSchema.default({
+    correctness: 0.4,
+    performance: 0.3,
+    maintainability_churn: 0.2,
+    size: 0.1,
+  }),
 });
+
 
 export const PublishConfigSchema = z.object({
   default_remote: z.string().default('origin'),

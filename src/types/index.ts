@@ -182,7 +182,9 @@ export interface ExperimentRecord {
   selection_reason?: string | null;
   status: 'active' | 'completed' | 'cleaned';
   plan_mode: 'shared' | 'isolated';
+  eval_matrix?: ExperimentMatrixReport | null;
 }
+
 
 
 export interface GlobalOptions {
@@ -454,6 +456,86 @@ export interface AgentStatusOptions {
   target?: string;
 }
 
+export type MatrixProbeCategory = 'test' | 'lint' | 'benchmark' | 'size' | 'custom';
+
+export interface MatrixProbeSpec {
+  name: string;
+  command: string;
+  category: MatrixProbeCategory;
+  mandatory?: boolean;
+  timeout_seconds?: number;
+  weight?: number;
+  higher_is_better?: boolean;
+  metric_unit?: string;
+  metric_regex?: string;
+}
+
+export interface VariantProbeResult {
+  probe_name: string;
+  category: MatrixProbeCategory;
+  command: string;
+  passed: boolean;
+  exit_code: number;
+  duration_ms: number;
+  stdout: string;
+  stderr: string;
+  numeric_value?: number;
+  metric_unit?: string;
+}
+
+export interface VariantEvaluationSummary {
+  worktree_id: string;
+  variant_name: string;
+  probe_results: VariantProbeResult[];
+  tests_passed: number;
+  tests_total: number;
+  lint_clean: boolean;
+  benchmark_latency_ms?: number;
+  benchmark_ops_sec?: number;
+  bundle_size_bytes?: number;
+  git_diff: {
+    files_changed: number;
+    insertions: number;
+    deletions: number;
+  };
+  composite_score: number;
+  rank: number;
+  compliant: boolean;
+}
+
+export interface MatrixScoringWeights {
+  correctness: number;
+  performance: number;
+  maintainability_churn: number;
+  size: number;
+}
+
+export interface ExperimentMatrixReport {
+  feature_name: string;
+  evaluated_at: string;
+  probes: MatrixProbeSpec[];
+  weights: MatrixScoringWeights;
+  variants: VariantEvaluationSummary[];
+  recommended_winner_id: string;
+  winning_justification: string;
+  baseline_comparison?: {
+    base_branch: string;
+    metrics: Record<string, number>;
+    deltas: Record<string, { delta_pct: number; improved: boolean }>;
+  };
+}
+
+export interface ParallelEvalOptions {
+  feature: string;
+  matrix?: string[];
+  concurrency?: number;
+  serial?: boolean;
+  autoPick?: boolean;
+  baseline?: boolean;
+  timeoutSeconds?: number;
+  dryRun?: boolean;
+}
+
 export class MannostreeError extends Error {
   constructor(
     message: string,
@@ -464,4 +546,5 @@ export class MannostreeError extends Error {
     this.name = 'MannostreeError';
   }
 }
+
 

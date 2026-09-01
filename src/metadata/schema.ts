@@ -143,6 +143,83 @@ export const RegistryRecordSchema = z.object({
   experiments: z.array(z.string()).default([]),
 });
 
+export const MatrixProbeCategorySchema = z.enum(['test', 'lint', 'benchmark', 'size', 'custom']);
+
+export const MatrixProbeSpecSchema = z.object({
+  name: z.string(),
+  command: z.string(),
+  category: MatrixProbeCategorySchema,
+  mandatory: z.boolean().optional(),
+  timeout_seconds: z.number().int().positive().optional(),
+  weight: z.number().nonnegative().optional(),
+  higher_is_better: z.boolean().optional(),
+  metric_unit: z.string().optional(),
+  metric_regex: z.string().optional(),
+});
+
+export const VariantProbeResultSchema = z.object({
+  probe_name: z.string(),
+  category: MatrixProbeCategorySchema,
+  command: z.string(),
+  passed: z.boolean(),
+  exit_code: z.number().int(),
+  duration_ms: z.number().nonnegative(),
+  stdout: z.string(),
+  stderr: z.string(),
+  numeric_value: z.number().optional(),
+  metric_unit: z.string().optional(),
+});
+
+export const VariantEvaluationSummarySchema = z.object({
+  worktree_id: z.string(),
+  variant_name: z.string(),
+  probe_results: z.array(VariantProbeResultSchema),
+  tests_passed: z.number().int().nonnegative(),
+  tests_total: z.number().int().nonnegative(),
+  lint_clean: z.boolean(),
+  benchmark_latency_ms: z.number().optional(),
+  benchmark_ops_sec: z.number().optional(),
+  bundle_size_bytes: z.number().optional(),
+  git_diff: z.object({
+    files_changed: z.number().int().nonnegative(),
+    insertions: z.number().int().nonnegative(),
+    deletions: z.number().int().nonnegative(),
+  }),
+  composite_score: z.number().min(0).max(100),
+  rank: z.number().int().positive(),
+  compliant: z.boolean(),
+});
+
+export const MatrixScoringWeightsSchema = z.object({
+  correctness: z.number(),
+  performance: z.number(),
+  maintainability_churn: z.number(),
+  size: z.number(),
+});
+
+export const ExperimentMatrixReportSchema = z.object({
+  feature_name: z.string(),
+  evaluated_at: z.string(),
+  probes: z.array(MatrixProbeSpecSchema),
+  weights: MatrixScoringWeightsSchema,
+  variants: z.array(VariantEvaluationSummarySchema),
+  recommended_winner_id: z.string(),
+  winning_justification: z.string(),
+  baseline_comparison: z
+    .object({
+      base_branch: z.string(),
+      metrics: z.record(z.string(), z.number()),
+      deltas: z.record(
+        z.string(),
+        z.object({
+          delta_pct: z.number(),
+          improved: z.boolean(),
+        })
+      ),
+    })
+    .optional(),
+});
+
 export const ExperimentRecordSchema = z.object({
   version: z.number().default(1),
   feature: z.string(),
@@ -156,7 +233,9 @@ export const ExperimentRecordSchema = z.object({
   selection_reason: z.string().nullable().optional(),
   status: z.enum(['active', 'completed', 'cleaned']).default('active'),
   plan_mode: z.enum(['shared', 'isolated']).default('shared'),
+  eval_matrix: ExperimentMatrixReportSchema.nullable().optional(),
 });
+
 
 export const TransactionIntentSchema = z.object({
   file_path: z.string(),
@@ -382,5 +461,7 @@ export const ExecutionScorecardSchema = z.object({
     total_criteria: z.number(),
   }),
 });
+
+
 
 

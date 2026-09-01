@@ -237,4 +237,71 @@ export function registerParallelCommand(program: Command): void {
         ].join('\n');
       });
     });
+
+  // parallel eval
+  parallelCmd
+    .command('eval <feature>')
+    .description('Run automated evaluation matrices across all variants of an experiment')
+    .option('--matrix <probes...>', 'Custom probe command sequence (e.g. "npm test", "npm run bench")')
+    .option('--concurrency <N>', 'Max concurrent probe executions', (val) => parseInt(val, 10))
+    .option('--serial', 'Run probes sequentially across variants', false)
+    .option('--auto-pick', 'Automatically pick the #1 ranked compliant variant', false)
+    .option('--baseline', 'Sample base branch metrics for comparison', false)
+    .option('--timeout <sec>', 'Timeout per probe in seconds', (val) => parseInt(val, 10))
+    .action(async (feature: string, cmdOptions: any) => {
+      const globalOpts = program.opts<GlobalOptions>();
+      const cwd = globalOpts.cwd ? globalOpts.cwd : process.cwd();
+
+      const config = loadConfig(globalOpts.config, cwd);
+      const git = new GitEngine(cwd);
+      const repoRoot = await git.getRepoRoot();
+
+      const orchestrator = new MannostreeOrchestrator(repoRoot, config);
+
+      const result = await orchestrator.parallelEval({
+        feature,
+        matrix: cmdOptions.matrix,
+        concurrency: cmdOptions.concurrency,
+        serial: cmdOptions.serial,
+        autoPick: cmdOptions.autoPick,
+        baseline: cmdOptions.baseline,
+        timeoutSeconds: cmdOptions.timeout,
+        dryRun: globalOpts.dryRun,
+      });
+
+      formatOutput(result, globalOpts, (data) => {
+        const { report, matrix_report_path, picked_winner } = data;
+        const lines: string[] = [];
+
+        lines.push(`Comparative Matrix Evaluation for '${report.feature_name}':`);
+        lines.push(`  Evaluated At:        ${report.evaluated_at}`);
+        lines.push(`  Recommended Winner:  ${report.recommended_winner_id || 'None'}`);
+        if (picked_winner) {
+          lines.push(`  Auto-Promoted:       ${picked_winner} (Chosen as experiment winner)`);
+        }
+        lines.push(`  Report Saved To:     ${matrix_report_path}`);
+        lines.push('');
+        lines.push('Winning Justification:');
+        lines.push(`  ${report.winning_justification}`);
+        lines.push('');
+        lines.push('Rankings & Composite Scores:');
+
+        for (const v of report.variants) {
+          const statusStr = v.compliant ? '✓ PASS' : '✖ FAIL';
+          lines.push(
+            `  #${v.rank} | ${v.worktree_id} | Status: ${statusStr} | Score: ${v.composite_score}`
+          );
+          lines.push(
+            `     Tests: ${v.tests_passed}/${v.tests_total} | Lint: ${v.lint_clean ? '✓' : '✖'} | Churn: +${v.git_diff.insertions}/-${v.git_diff.deletions}`
+          );
+          if (v.benchmark_latency_ms !== undefined) {
+            lines.push(`     Latency: ${v.benchmark_latency_ms}ms`);
+          }
+          lines.push('');
+        }
+
+        return lines.join('\n');
+      });
+    });
 }
+

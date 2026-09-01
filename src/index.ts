@@ -16,7 +16,9 @@ export * from './core/task.js';
 export * from './core/agent-runner.js';
 export * from './core/contract.js';
 export * from './core/quality-gates.js';
+export * from './core/matrix-eval.js';
 export * from './core/orchestrator.js';
 export * from './cli/output.js';
 export * from './cli/index.js';
+
 

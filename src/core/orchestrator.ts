@@ -20,8 +20,8 @@ import { PublishEngine, PrOptions, PrResult, GhExecutor } from './publish.js';
 import { TaskEngine, TaskValidationResult, HandoffReport } from './task.js';
 import { ParallelHandoffEngine } from './handoff.js';
 import { AgentRunner } from './agent-runner.js';
-
 import { QualityGatesRunner } from './quality-gates.js';
+import { MatrixEvaluator } from './matrix-eval.js';
 import {
   parseTaskContractMarkdown,
   validateContractFulfillment,
@@ -45,8 +45,11 @@ import {
   AgentSessionRecord,
   FulfillmentVerificationReport,
   ExecutionScorecard,
+  ExperimentMatrixReport,
+  ParallelEvalOptions,
   QualityGateCommand,
 } from '../types/index.js';
+
 
 
 export interface SpawnOptions {
@@ -134,6 +137,7 @@ export class MannostreeOrchestrator {
   public parallelHandoffEngine: ParallelHandoffEngine;
   public agentRunner: AgentRunner;
   public qualityGatesRunner: QualityGatesRunner;
+  public matrixEvaluator: MatrixEvaluator;
 
   constructor(
     public repoRoot: string,
@@ -163,7 +167,9 @@ export class MannostreeOrchestrator {
     );
     this.agentRunner = new AgentRunner(repoRoot, this.store, config);
     this.qualityGatesRunner = new QualityGatesRunner();
+    this.matrixEvaluator = new MatrixEvaluator(repoRoot, this.git, this.store, config);
   }
+
 
 
   public getProfile(name: string = 'default'): ProfileConfig {
@@ -1660,7 +1666,49 @@ ${report.remediation_steps.map((s) => `1. ${s}`).join('\n')}
       errors: [],
     };
   }
+
+  public async parallelEval(
+    options: ParallelEvalOptions
+  ): Promise<
+    CommandOutput<{
+      report: ExperimentMatrixReport;
+      matrix_report_path: string;
+      picked_winner: string | null;
+    }>
+  > {
+
+    const { report, matrix_report_path, experiment } = await this.matrixEvaluator.evaluateExperiment(
+      options.feature,
+      options
+    );
+
+    let pickedWinner: string | null = null;
+    if (options.autoPick && report.recommended_winner_id && !options.dryRun) {
+      await this.parallelPick({
+        feature: options.feature,
+        winner: report.recommended_winner_id,
+        reason: report.winning_justification,
+        dryRun: false,
+      });
+      pickedWinner = report.recommended_winner_id;
+    }
+
+
+    return {
+      command: 'parallel eval',
+      ok: true,
+      dry_run: !!options.dryRun,
+      result: {
+        report,
+        matrix_report_path,
+        picked_winner: pickedWinner,
+      },
+      warnings: [],
+      errors: [],
+    };
+  }
 }
+
 
 
 

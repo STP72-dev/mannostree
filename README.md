@@ -281,7 +281,18 @@ mannostree parallel compare auth-spike
 mannostree parallel compare auth-spike --json
 ```
 
-#### 17. Pick Winner (`parallel pick`)
+#### 17. Automated Evaluation Matrix (`parallel eval`)
+Concurrently run test, lint, and benchmark probe matrices across all variants, computing composite scores and automated winner recommendations:
+```bash
+# Evaluate variants with default or custom probe suites
+mannostree parallel eval auth-spike --matrix "npm test, npm run bench"
+
+# Evaluate and automatically promote #1 ranked variant
+mannostree parallel eval auth-spike --auto-pick
+```
+
+#### 18. Pick Winner (`parallel pick`)
+
 Explicitly promote the winning variant in experiment metadata (never auto-merges or auto-deletes losers):
 ```bash
 # Select variant 1 as winner
