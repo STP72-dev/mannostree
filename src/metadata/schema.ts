@@ -663,6 +663,46 @@ export const ReleaseManifestRecordSchema = z.object({
   ),
 });
 
+export const HostAdapterTypeSchema = z.enum([
+  'github',
+  'gitlab',
+  'gitea',
+  'bitbucket',
+  'generic',
+]);
+
+export const RemoteHostInfoSchema = z.object({
+  host_type: HostAdapterTypeSchema,
+  hostname: z.string(),
+  owner: z.string(),
+  repo: z.string(),
+  remote_name: z.string(),
+  remote_url: z.string(),
+  is_custom_domain: z.boolean(),
+  project_id_encoded: z.string().optional(),
+});
+
+export const HostPublishResultSchema = z.object({
+  host_type: HostAdapterTypeSchema,
+  mode: z.enum(['published', 'prepare-only', 'pushed-only']),
+  pr_number: z.number().int().nullable().optional(),
+  pr_url: z.string().nullable().optional(),
+  web_url: z.string().nullable().optional(),
+  instructions: z.string().optional(),
+});
+
+export const HostHealthStatusSchema = z.object({
+  host_type: HostAdapterTypeSchema,
+  available: z.boolean(),
+  cli_found: z.boolean(),
+  cli_name: z.string().optional(),
+  token_configured: z.boolean(),
+  token_env_var: z.string().optional(),
+  reachable: z.boolean().optional(),
+  message: z.string(),
+});
+
+
 
 
 

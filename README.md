@@ -518,8 +518,47 @@ mannostree fleet publish --all --preview
 mannostree fleet publish --selected feature-auth feature-cache --push --draft
 ```
 
-
 ---
+
+### Multi-Host Remote Adapters (Movement 7)
+
+Mannostree provides first-class, pluggable support across **GitHub**, **GitLab** (Cloud & Self-Hosted), **Gitea / Forgejo**, **Atlassian Bitbucket**, and **Generic Git Remotes**.
+
+#### Multi-Host Configuration in `.mannostree.yml`
+```yaml
+publish:
+  default_remote: origin
+  default_host: auto # auto | github | gitlab | gitea | bitbucket | generic
+  default_draft: true
+  hosts:
+    gitlab:
+      base_url: https://gitlab.internal.corp/api/v4
+      token_env: GITLAB_TOKEN
+    gitea:
+      base_url: https://gitea.local/api/v1
+      token_env: GITEA_TOKEN
+    bitbucket:
+      workspace: myteam
+      token_env: BITBUCKET_TOKEN
+```
+
+#### Publishing to GitLab, Gitea, or Bitbucket
+```bash
+# Auto-detects host type from remote URL and creates GitLab Merge Request
+mannostree pr feature-auth --push --draft
+
+# Explicitly override host adapter
+mannostree pr feature-auth --push --host gitlab
+mannostree pr feature-cache --push --host gitea
+mannostree pr feature-core --push --host bitbucket
+
+# Publish parallel experiment winner to GitLab
+mannostree parallel publish auth-eval --push --host gitlab --draft
+
+# Audit host adapter tokens and CLI readiness
+mannostree doctor
+```
+
 
 ## Testing & Verification
 

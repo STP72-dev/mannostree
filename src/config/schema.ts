@@ -61,11 +61,22 @@ export const ParallelConfigSchema = z.object({
 });
 
 
+export const HostConfigEntrySchema = z.object({
+  domain: z.string().optional(),
+  type: z.enum(['github', 'gitlab', 'gitea', 'bitbucket', 'generic']).optional(),
+  base_url: z.string().url().optional(),
+  token_env: z.string().optional(),
+  username_env: z.string().optional(),
+  default_draft: z.boolean().optional(),
+});
+
 export const PublishConfigSchema = z.object({
   default_remote: z.string().default('origin'),
+  default_host: z.enum(['auto', 'github', 'gitlab', 'gitea', 'bitbucket', 'generic']).default('auto'),
   default_draft: z.boolean().default(true),
   push_on_pr_create: z.boolean().default(false),
   pr_body_source: z.enum(['artifacts', 'manual']).default('artifacts'),
+  hosts: z.record(HostConfigEntrySchema).optional(),
 });
 
 export const IntegrationsConfigSchema = z.object({

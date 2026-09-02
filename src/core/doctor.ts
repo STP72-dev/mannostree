@@ -4,6 +4,8 @@ import { MannostreeConfig } from '../config/schema.js';
 import { GitEngine } from '../git/engine.js';
 import { MetadataStore, readJson } from '../metadata/store.js';
 import { WorktreeRecordSchema } from '../metadata/schema.js';
+import { HostHealthStatus } from '../types/index.js';
+import { createDefaultAdapterRegistry } from '../adapters/index.js';
 
 export type FindingType =
   | 'MISSING_DISK'
@@ -36,6 +38,7 @@ export interface DoctorReport {
   warning_count: number;
   findings: DoctorFinding[];
   proposed_repairs: ProposedRepair[];
+  host_adapters?: HostHealthStatus[];
 }
 
 export class DoctorEngine {
@@ -181,6 +184,9 @@ export class DoctorEngine {
       }
     }
 
+    // 5. Audit host adapters
+    const hostAdapters = await this.auditHostAdapters();
+
     const errorCount = findings.filter((f) => f.severity === 'error').length;
     const warningCount = findings.filter((f) => f.severity === 'warning').length;
 
@@ -192,7 +198,31 @@ export class DoctorEngine {
       warning_count: warningCount,
       findings,
       proposed_repairs: proposedRepairs,
+      host_adapters: hostAdapters,
     };
+  }
+
+  public async auditHostAdapters(): Promise<HostHealthStatus[]> {
+    const registry = createDefaultAdapterRegistry();
+    const adapters = registry.listAdapters();
+    const statuses: HostHealthStatus[] = [];
+
+    for (const adapter of adapters) {
+      try {
+        const status = await adapter.checkHealth(this.config.publish?.hosts);
+        statuses.push(status);
+      } catch (err: any) {
+        statuses.push({
+          host_type: adapter.hostType,
+          available: false,
+          cli_found: false,
+          token_configured: false,
+          message: `Health check failed: ${err.message}`,
+        });
+      }
+    }
+
+    return statuses;
   }
 
   public async applyRepairs(

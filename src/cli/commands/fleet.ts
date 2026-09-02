@@ -502,6 +502,8 @@ export function registerFleetCommand(program: Command): void {
     .option('--target-base <branch>', 'Base branch to target')
     .option('--preview', 'Preview batch actions without remote push or PR creation', false)
     .option('--force', 'Force publish even if worktrees contain uncommitted changes', false)
+    .option('--host <type>', 'Override auto-detected host adapter (github, gitlab, gitea, bitbucket, generic)')
+    .option('--remote <name>', 'Git remote name to use (default: origin)')
     .action(async (cmdOptions: any) => {
       const globalOpts = program.opts<GlobalOptions>();
       const cwd = globalOpts.cwd ? globalOpts.cwd : process.cwd();
@@ -519,6 +521,8 @@ export function registerFleetCommand(program: Command): void {
         preview: cmdOptions.preview || globalOpts.dryRun,
         dryRun: globalOpts.dryRun,
         force: cmdOptions.force,
+        host: cmdOptions.host,
+        remote: cmdOptions.remote,
       });
 
       formatOutput(result, globalOpts, (report) => {

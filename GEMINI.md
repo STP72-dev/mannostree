@@ -25,6 +25,7 @@ npm test && npm run lint
 TypeScript 5.7.3 / Node.js >= 20.0.0 (ESM `package.json` `"type": "module"`): Follow standard conventions
 
 ## Recent Changes
+- 007-multi-host-adapters: Added pluggable multi-host remote adapters (GitHub, GitLab MRs, Gitea PRs, Bitbucket PRs, Generic Remote), zero-dependency remote URL detector, and host diagnostics doctor audit.
 - 006-parallel-publish-merge-sync: Added Parallel publish pipeline (rich evidence PR compilation, benchmark embedding), Fleet merge-sync (multi-branch sequential 3-way in-memory merge assembly, release manifest), and Fleet batch PR publisher
 - 005-fleet-tier-auto-archive: Added TypeScript 5.7.3 / Node.js >= 20.0.0 (ESM `package.json` `"type": "module"`) + `commander` (CLI), `chalk` (colored output), `zod` (runtime schema validation), `yaml` (config parsing)
 - 004-fleet-sync-conflict-matrix: Added FleetEngine (fleet sync, 3-way in-memory merge simulation, pairwise cross-worktree conflict matrix)

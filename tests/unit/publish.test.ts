@@ -22,8 +22,9 @@ describe('Publish Engine', () => {
     tempRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'mannostree-publish-test-'));
     execSync('git init -b main', { cwd: tempRepo });
     execSync('git config user.name "Publish Tester"', { cwd: tempRepo });
-    execSync('git config user.email "publish@example.com"', { cwd: tempRepo });
     execSync(`git remote add origin ${remoteRepo}`, { cwd: tempRepo });
+    execSync(`git remote set-url --push origin ${remoteRepo}`, { cwd: tempRepo });
+    execSync('git remote set-url origin https://github.com/ludmansolutions/sample-app.git', { cwd: tempRepo });
     fs.writeFileSync(path.join(tempRepo, 'README.md'), '# Base Project\n', 'utf-8');
     execSync('git add README.md && git commit -m "Initial commit"', { cwd: tempRepo });
     execSync('git push -u origin main', { cwd: tempRepo });

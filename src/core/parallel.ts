@@ -583,46 +583,47 @@ export class ParallelEngine {
     }
 
     // Remote push requested
-    let prUrl: string | null = null;
-    let prNumber: number | null = null;
-    const remote = this.config.publish?.default_remote || 'origin';
+    const remote = options.remote || this.config.publish?.default_remote || 'origin';
+    const effectiveHost = options.host || (this.config.publish?.default_host as any);
 
+    let remoteUrl = '';
     if (fs.existsSync(winnerRecord.worktree_path)) {
-      await this.git.exec(['push', '-u', remote, winnerRecord.branch], winnerRecord.worktree_path);
-
       try {
-        const ghArgs = [
-          'pr',
-          'create',
-          '--head',
-          winnerRecord.branch,
-          '--base',
-          baseBranch,
-          '--title',
-          prTitle,
-          '--body-file',
-          fullBodyPath,
-        ];
-        if (draft) {
-          ghArgs.push('--draft');
-        }
-
-        const ghRes = await publishEngine.ghExecutor(ghArgs, winnerRecord.worktree_path);
-        prUrl = ghRes.stdout.trim();
-        const numMatch = prUrl.match(/\/pull\/(\d+)/);
-        if (numMatch) {
-          prNumber = parseInt(numMatch[1], 10);
-        }
+        const res = await this.git.exec(['remote', 'get-url', remote], winnerRecord.worktree_path);
+        remoteUrl = res.stdout.trim();
       } catch {
-        // gh CLI fallback
+        remoteUrl = '';
       }
     }
+
+    const { adapter, hostInfo } = publishEngine.adapterRegistry.resolveAdapterForRemote(
+      remoteUrl,
+      effectiveHost,
+      this.config.publish?.hosts
+    );
+
+    if (push && fs.existsSync(winnerRecord.worktree_path)) {
+      try {
+        await this.git.exec(['push', '-u', remote, winnerRecord.branch], winnerRecord.worktree_path);
+      } catch {
+        // Push error
+      }
+    }
+
+    const hostResult = await adapter.createPullRequest(winnerRecord.worktree_path, hostInfo, {
+      title: prTitle,
+      body: prBody,
+      source_branch: winnerRecord.branch,
+      target_base: baseBranch,
+      draft,
+      push,
+    });
 
     winnerRecord.publish = {
       pushed: true,
       published_at: now,
-      pr_url: prUrl,
-      pr_number: prNumber,
+      pr_url: hostResult.pr_url,
+      pr_number: hostResult.pr_number,
     };
     winnerRecord.updated_at = now;
     await this.store.saveWorktree(winnerRecord);
@@ -637,8 +638,8 @@ export class ParallelEngine {
       branch: winnerRecord.branch,
       base_branch: baseBranch,
       pushed: true,
-      pr_number: prNumber,
-      pr_url: prUrl,
+      pr_number: hostResult.pr_number,
+      pr_url: hostResult.pr_url,
       pr_body_file: relBodyPath,
       pr_title: prTitle,
       pr_body: prBody,

@@ -21,6 +21,8 @@ describe('Mannostree PR Push Integration with Mock gh Executable', () => {
     execSync('git config user.name "Push Tester"', { cwd: tempRepo });
     execSync('git config user.email "push@example.com"', { cwd: tempRepo });
     execSync(`git remote add origin ${remoteRepo}`, { cwd: tempRepo });
+    execSync(`git remote set-url --push origin ${remoteRepo}`, { cwd: tempRepo });
+    execSync('git remote set-url origin https://github.com/ludmansolutions/mannostree.git', { cwd: tempRepo });
     fs.writeFileSync(path.join(tempRepo, 'README.md'), '# Integration Repo\n', 'utf-8');
     execSync('git add README.md && git commit -m "Initial commit"', { cwd: tempRepo });
     execSync('git push -u origin main', { cwd: tempRepo });

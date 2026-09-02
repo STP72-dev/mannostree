@@ -13,7 +13,13 @@ import {
   ExperimentMatrixReport,
   FleetBatchPublishOptions,
   FleetBatchPublishReport,
+  HostAdapterType,
 } from '../types/index.js';
+import {
+  AdapterRegistry,
+  createDefaultAdapterRegistry,
+  GitHubAdapter,
+} from '../adapters/index.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -36,10 +42,14 @@ export interface PrOptions {
   draft?: boolean;
   push?: boolean;
   dryRun?: boolean;
+  host?: HostAdapterType;
+  remote?: string;
+  targetBase?: string;
 }
 
 export interface PrResult {
-  mode: 'prepare-only' | 'published';
+  mode: 'prepare-only' | 'published' | 'pushed-only';
+  host_type?: HostAdapterType;
   title: string;
   body_file: string;
   body: string;
@@ -50,14 +60,24 @@ export interface PrResult {
 
 export class PublishEngine {
   public ghExecutor: GhExecutor;
+  public adapterRegistry: AdapterRegistry;
 
   constructor(
     public repoRoot: string,
     public config: MannostreeConfig,
     public git: GitEngine,
-    ghExecutor?: GhExecutor
+    ghExecutor?: GhExecutor,
+    adapterRegistry?: AdapterRegistry
   ) {
     this.ghExecutor = ghExecutor || defaultGhExecutor;
+    if (adapterRegistry) {
+      this.adapterRegistry = adapterRegistry;
+    } else {
+      this.adapterRegistry = createDefaultAdapterRegistry();
+      if (ghExecutor) {
+        this.adapterRegistry.registerAdapter(new GitHubAdapter(ghExecutor));
+      }
+    }
   }
 
   public assemblePrBody(worktreeFullPath: string, record: WorktreeRecord): string {
@@ -255,65 +275,54 @@ export class PublishEngine {
       fs.writeFileSync(prBodyFullPath, prBody, 'utf-8');
     }
 
-    if (!push) {
-      return {
-        mode: 'prepare-only',
-        title,
-        body_file: prBodyRelPath,
-        body: prBody,
-        pr_url: null,
-        pr_number: null,
-        instructions: `PR prepared locally in '${prBodyRelPath}'. To push and open PR on GitHub, run with --push.`,
-      };
+    const remote = options.remote || this.config.publish?.default_remote || 'origin';
+    const targetBase = options.targetBase || record.base_branch;
+
+    let remoteUrl = '';
+    try {
+      const res = await this.git.exec(['remote', 'get-url', remote], worktreeFullPath);
+      remoteUrl = res.stdout.trim();
+    } catch {
+      remoteUrl = '';
     }
 
-    // If push is explicitly requested:
-    let prUrl: string | null = null;
-    let prNumber: number | null = null;
+    const { adapter, hostInfo } = this.adapterRegistry.resolveAdapterForRemote(
+      remoteUrl,
+      options.host || (this.config.publish?.default_host as any),
+      this.config.publish?.hosts
+    );
 
-    if (!dryRun) {
-      const remote = this.config.publish?.default_remote || 'origin';
-      await this.git.exec(['push', '-u', remote, record.branch], worktreeFullPath);
-
-      // Attempt gh CLI PR creation if available
+    if (push && !dryRun) {
       try {
-        const ghArgs = [
-          'pr',
-          'create',
-          '--head',
-          record.branch,
-          '--base',
-          record.base_branch,
-          '--title',
-          title,
-          '--body-file',
-          prBodyFullPath,
-        ];
-        if (draft) {
-          ghArgs.push('--draft');
-        }
-
-        const ghRes = await this.ghExecutor(ghArgs, worktreeFullPath);
-        prUrl = ghRes.stdout.trim();
-        const numMatch = prUrl.match(/\/pull\/(\d+)/);
-        if (numMatch) {
-          prNumber = parseInt(numMatch[1], 10);
-        }
+        await this.git.exec(['push', '-u', remote, record.branch], worktreeFullPath);
       } catch {
-        // gh CLI not available or not logged in; push succeeded
+        // Push error handled or reported
       }
     }
 
+    const hostResult = await adapter.createPullRequest(worktreeFullPath, hostInfo, {
+      title,
+      body: prBody,
+      source_branch: record.branch,
+      target_base: targetBase,
+      draft,
+      push: push && !dryRun,
+      dryRun,
+    });
+
     return {
-      mode: 'published',
+      mode: hostResult.mode,
+      host_type: hostResult.host_type,
       title,
       body_file: prBodyRelPath,
       body: prBody,
-      pr_url: prUrl,
-      pr_number: prNumber,
-      instructions: prUrl
-        ? `PR opened: ${prUrl}`
-        : `Branch '${record.branch}' pushed to remote. Create PR using GitHub web UI or 'gh pr create'.`,
+      pr_url: hostResult.pr_url,
+      pr_number: hostResult.pr_number,
+      instructions:
+        hostResult.instructions ||
+        (hostResult.pr_url
+          ? `PR opened: ${hostResult.pr_url}`
+          : `Branch '${record.branch}' pushed to remote '${remote}'. Review PR description in '${prBodyRelPath}'.`),
     };
   }
 

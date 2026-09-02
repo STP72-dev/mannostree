@@ -162,6 +162,16 @@ export function formatDoctorReport(report: DoctorReport): string {
     }
   }
 
+  if (report.host_adapters && report.host_adapters.length > 0) {
+    lines.push(chalk.bold('\nHost Adapters & Integration Health:'));
+    for (const h of report.host_adapters) {
+      const statusTag = h.available
+        ? chalk.green('[READY]')
+        : chalk.yellow('[UNAVAILABLE]');
+      lines.push(`  ${statusTag} ${chalk.bold(h.host_type.toUpperCase())}: ${h.message}`);
+    }
+  }
+
   if (report.proposed_repairs.length > 0) {
     lines.push(chalk.bold('\nProposed Automated Repairs:'));
     for (const r of report.proposed_repairs) {

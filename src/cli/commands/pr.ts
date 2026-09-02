@@ -12,7 +12,11 @@ export function registerPrCommand(program: Command): void {
     .option('--title <text>', 'Custom pull request title')
     .option('--body-file <path>', 'Custom markdown file to use as PR body')
     .option('--draft', 'Create PR as draft', true)
-    .option('--push', 'Push branch to remote and invoke GitHub CLI to create PR', false)
+    .option('--no-draft', 'Create PR as ready for review')
+    .option('--push', 'Push branch to remote and invoke host platform adapter to create PR/MR', false)
+    .option('--host <type>', 'Override auto-detected host adapter (github, gitlab, gitea, bitbucket, generic)')
+    .option('--remote <name>', 'Git remote name to use (default: origin)')
+    .option('--target-base <branch>', 'Target base branch for PR/MR')
     .action(async (id: string, cmdOptions: any) => {
       const globalOpts = program.opts<GlobalOptions>();
       const cwd = globalOpts.cwd ? globalOpts.cwd : process.cwd();
@@ -28,6 +32,9 @@ export function registerPrCommand(program: Command): void {
         bodyFile: cmdOptions.bodyFile,
         draft: cmdOptions.draft,
         push: cmdOptions.push,
+        host: cmdOptions.host,
+        remote: cmdOptions.remote,
+        targetBase: cmdOptions.targetBase,
         dryRun: globalOpts.dryRun,
       });
 

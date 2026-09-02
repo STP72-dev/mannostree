@@ -711,6 +711,8 @@ export interface ParallelPublishOptions {
   dryRun?: boolean;
   force?: boolean;
   exportPrBody?: string;
+  host?: HostAdapterType;
+  remote?: string;
 }
 
 export interface ParallelPublishResult {
@@ -755,11 +757,12 @@ export interface FleetMergeSyncReport {
 export interface FleetMergeSyncOptions {
   target: string;
   candidates?: string[];
+  strategy?: 'merge' | 'rebase' | 'ff-only';
   preview?: boolean;
   dryRun?: boolean;
-  yes?: boolean;
   ignoreConflicts?: boolean;
   createTargetIfMissing?: boolean;
+  yes?: boolean;
 }
 
 export interface FleetBatchPublishItem {
@@ -789,6 +792,8 @@ export interface FleetBatchPublishOptions {
   preview?: boolean;
   dryRun?: boolean;
   force?: boolean;
+  host?: HostAdapterType;
+  remote?: string;
 }
 
 export interface ReleaseManifestRecord {
@@ -813,6 +818,60 @@ export class MannostreeError extends Error {
     this.name = 'MannostreeError';
   }
 }
+
+export type HostAdapterType =
+  | 'github'
+  | 'gitlab'
+  | 'gitea'
+  | 'bitbucket'
+  | 'generic';
+
+export interface RemoteHostInfo {
+  host_type: HostAdapterType;
+  hostname: string;
+  owner: string;
+  repo: string;
+  remote_name: string;
+  remote_url: string;
+  is_custom_domain: boolean;
+  project_id_encoded?: string;
+}
+
+export interface HostPublishOptions {
+  title: string;
+  body: string;
+  source_branch: string;
+  target_base: string;
+  draft?: boolean;
+  push?: boolean;
+  dryRun?: boolean;
+  host_override?: HostAdapterType;
+  remote_name?: string;
+  token?: string;
+  base_url?: string;
+}
+
+export interface HostPublishResult {
+  host_type: HostAdapterType;
+  mode: 'published' | 'prepare-only' | 'pushed-only';
+  pr_number?: number | null;
+  pr_url?: string | null;
+  web_url?: string | null;
+  instructions?: string;
+  raw_response?: Record<string, any>;
+}
+
+export interface HostHealthStatus {
+  host_type: HostAdapterType;
+  available: boolean;
+  cli_found: boolean;
+  cli_name?: string;
+  token_configured: boolean;
+  token_env_var?: string;
+  reachable?: boolean;
+  message: string;
+}
+
 
 
 

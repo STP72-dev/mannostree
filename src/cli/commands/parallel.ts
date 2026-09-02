@@ -316,6 +316,8 @@ export function registerParallelCommand(program: Command): void {
     .option('--preview', 'Preview compiled PR body without pushing or creating PR', false)
     .option('--export-pr <path>', 'Export compiled PR markdown to specified path')
     .option('--force', 'Force publish even if quality gates report warnings', false)
+    .option('--host <type>', 'Override auto-detected host adapter (github, gitlab, gitea, bitbucket, generic)')
+    .option('--remote <name>', 'Git remote name to use (default: origin)')
     .action(async (feature: string, cmdOptions: any) => {
       const globalOpts = program.opts<GlobalOptions>();
       const cwd = globalOpts.cwd ? globalOpts.cwd : process.cwd();
@@ -336,6 +338,8 @@ export function registerParallelCommand(program: Command): void {
         dryRun: globalOpts.dryRun,
         exportPrBody: cmdOptions.exportPr,
         force: cmdOptions.force,
+        host: cmdOptions.host,
+        remote: cmdOptions.remote,
       });
 
       formatOutput(result, globalOpts, (data) => {
