@@ -8,6 +8,8 @@ Auto-generated from all feature plans. Last updated: 2026-08-31
 - Pluggable container execution runtime drivers (Docker, Podman rootless, local Process fallback) with POSIX UID mapping, resource caps, and durable execution receipts (008-sandboxed-container-execution)
 - TypeScript 5.7.3 / Node.js >= 20.0.0 (ESM `"type": "module"`) + `commander` (CLI), `chalk` (styling), `zod` (runtime schema validation), `yaml` (YAML manifest parser) (009-cross-repo-poly-worktree)
 - Persistent JSON files in `.mannostree/poly-registry.json`, `.mannostree/poly-links.json`, `.mannostree/poly-releases/` (009-cross-repo-poly-worktree)
+- TypeScript 5.7.3 / Node.js >= 20.0.0 (ESM `"type": "module"`) + `commander` (CLI), `chalk` (styling), `zod` (runtime schema validation), `yaml` (YAML parsing), native Node.js `fetch` (HTTP client) (010-issue-tracker-sync)
+- Persistent JSON files in `.mannostree/issues/<KEY>.json`, updated `.mannostree/worktrees/<id>.json`, and `.task/task-contract.md` (010-issue-tracker-sync)
 
 ## Project Structure
 
@@ -25,9 +27,9 @@ npm test && npm run lint
 TypeScript 5.7.3 / Node.js >= 20.0.0 (ESM `package.json` `"type": "module"`): Follow standard conventions
 
 ## Recent Changes
+- 010-issue-tracker-sync: Added TypeScript 5.7.3 / Node.js >= 20.0.0 (ESM `"type": "module"`) + `commander` (CLI), `chalk` (styling), `zod` (runtime schema validation), `yaml` (YAML parsing), native Node.js `fetch` (HTTP client)
 - 009-cross-repo-poly-worktree: Added TypeScript 5.7.3 / Node.js >= 20.0.0 (ESM `"type": "module"`) + `commander` (CLI), `chalk` (styling), `zod` (runtime schema validation), `yaml` (YAML manifest parser)
 - 008-sandboxed-container-execution: Added container sandbox execution engine (Docker, Podman, Process fallback), resource quotas, network isolation policies, POSIX UID mapping, durable `.task/sandbox-receipt.json` records, sandboxed agent dispatch, clean-room matrix eval, and container health doctor audit.
-- 007-multi-host-adapters: Added pluggable multi-host remote adapters (GitHub, GitLab MRs, Gitea PRs, Bitbucket PRs, Generic Remote), zero-dependency remote URL detector, and host diagnostics doctor audit.
 
 
 <!-- MANUAL ADDITIONS START -->
