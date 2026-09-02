@@ -559,12 +559,47 @@ mannostree parallel publish auth-eval --push --host gitlab --draft
 mannostree doctor
 ```
 
+---
+
+### Sandboxed Container Execution (Movement 8)
+
+Mannostree provides zero-leak clean-room container sandboxing across **Docker**, **Podman** (rootless), and direct host **Process** fallback for isolated command execution, worker agent execution, and benchmark matrix evaluations.
+
+#### Sandbox Configuration in `.mannostree.yml`
+```yaml
+sandbox:
+  default_runtime: process # docker | podman | process
+  default_image: node:20-alpine
+  default_network: bridge # none | bridge | host | egress-only
+  limits:
+    cpus: 2.0
+    memory: 2GB
+    timeout_seconds: 300
+```
+
+#### Sandboxed CLI Workflows
+```bash
+# Execute in-worktree commands inside isolated Docker container with resource limits
+mannostree exec feature-auth npm test --sandbox docker --image node:20-alpine --cpus 2 --memory 1GB --network none
+
+# Preview sandboxed execution in dry-run mode
+mannostree exec feature-auth cargo test --sandbox docker --image rust:latest --dry-run
+
+# Dispatch autonomous agent into a clean-room Docker sandbox
+mannostree agent dispatch feature-auth --role worker --sandbox docker --image node:20-alpine --network bridge
+
+# Run parallel benchmark evaluations inside isolated container runtimes
+mannostree parallel eval auth-eval --sandbox docker --image node:20-alpine --cpus 2 --memory 2GB
+
+# Audit container engine health, versions, daemon connectivity, and rootless mode
+mannostree doctor
+```
+
+---
 
 ## Testing & Verification
 
 Run the automated test suite with Vitest:
-
-
 
 ```bash
 # Run tests

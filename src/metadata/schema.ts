@@ -404,6 +404,8 @@ export const AgentSessionRecordSchema = z.object({
   error: z.string().optional(),
   contract_path: z.string(),
   scorecard_path: z.string().optional(),
+  sandbox: z.enum(['docker', 'podman', 'process']).optional(),
+  image: z.string().optional(),
 });
 
 export const QualityGateCommandSchema = z.object({
@@ -700,6 +702,63 @@ export const HostHealthStatusSchema = z.object({
   token_env_var: z.string().optional(),
   reachable: z.boolean().optional(),
   message: z.string(),
+});
+
+// --------------------------------------------------------------------------
+// Movement 8: Sandboxed Container Execution Schemas
+// --------------------------------------------------------------------------
+
+export const SandboxRuntimeTypeSchema = z.enum(['docker', 'podman', 'process']);
+
+export const NetworkIsolationModeSchema = z.enum(['none', 'bridge', 'host', 'egress-only']);
+
+export const SandboxResourceLimitsSchema = z.object({
+  cpus: z.number().positive().optional(),
+  memory: z.string().optional(),
+  disk_quota: z.string().optional(),
+  timeout_seconds: z.number().int().positive().optional(),
+});
+
+export const SandboxExecutionResultSchema = z.object({
+  runtime: SandboxRuntimeTypeSchema,
+  container_id: z.string().optional(),
+  image: z.string().optional(),
+  command: z.string(),
+  exit_code: z.number().int(),
+  duration_ms: z.number().nonnegative(),
+  stdout: z.string(),
+  stderr: z.string(),
+  timed_out: z.boolean(),
+  oom_killed: z.boolean().optional(),
+  receipt_path: z.string().optional(),
+});
+
+export const SandboxReceiptSchema = z.object({
+  version: z.literal(1).default(1),
+  id: z.string(),
+  worktree_id: z.string(),
+  runtime: SandboxRuntimeTypeSchema,
+  container_id: z.string().optional(),
+  image: z.string().optional(),
+  command: z.string(),
+  exit_code: z.number().int(),
+  duration_ms: z.number().nonnegative(),
+  peak_memory_bytes: z.number().nonnegative().optional(),
+  cpu_time_ms: z.number().nonnegative().optional(),
+  timed_out: z.boolean(),
+  oom_killed: z.boolean(),
+  timestamp: z.string(),
+});
+
+export const SandboxHealthStatusSchema = z.object({
+  runtime: SandboxRuntimeTypeSchema,
+  available: z.boolean(),
+  version: z.string().optional(),
+  daemon_running: z.boolean().optional(),
+  cgroups_version: z.string().optional(),
+  rootless: z.boolean().optional(),
+  details: z.string().optional(),
+  error: z.string().optional(),
 });
 
 

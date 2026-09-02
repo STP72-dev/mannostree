@@ -21,9 +21,13 @@ export function registerAgentCommand(program: Command): void {
     .option('--title <title>', 'Task title')
     .option('--problem <text>', 'Problem statement description')
     .option('--scope <items...>', 'Scope deliverable items')
-    .option('--criteria <items...>', 'Acceptance criteria checklist items')
     .option('--timeout <seconds>', 'Execution timeout in seconds', (val) => parseInt(val, 10))
     .option('--parallel', 'Dispatch to all variants in an experiment', false)
+    .option('--sandbox <type>', 'Sandbox runtime driver (docker, podman, process)')
+    .option('--image <image>', 'Container image for sandbox execution')
+    .option('--cpus <n>', 'CPU core ceiling limit', parseFloat)
+    .option('--memory <limit>', 'Memory quota limit (e.g. 2GB)')
+    .option('--network <mode>', 'Network isolation policy (none, bridge, host)')
     .action(async (target: string, cmdOptions: any) => {
       const globalOpts = program.opts<GlobalOptions>();
       const cwd = globalOpts.cwd ? globalOpts.cwd : process.cwd();
@@ -46,6 +50,11 @@ export function registerAgentCommand(program: Command): void {
         timeoutSeconds: cmdOptions.timeout,
         parallel: cmdOptions.parallel,
         dryRun: globalOpts.dryRun,
+        sandbox: cmdOptions.sandbox,
+        image: cmdOptions.image,
+        cpus: cmdOptions.cpus,
+        memory: cmdOptions.memory,
+        network: cmdOptions.network,
       });
 
       formatOutput(result, globalOpts, (data, dryRun) => {

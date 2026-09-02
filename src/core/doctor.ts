@@ -4,8 +4,12 @@ import { MannostreeConfig } from '../config/schema.js';
 import { GitEngine } from '../git/engine.js';
 import { MetadataStore, readJson } from '../metadata/store.js';
 import { WorktreeRecordSchema } from '../metadata/schema.js';
-import { HostHealthStatus } from '../types/index.js';
+import { HostHealthStatus, SandboxHealthStatus } from '../types/index.js';
 import { createDefaultAdapterRegistry } from '../adapters/index.js';
+import {
+  SandboxRegistry,
+  createDefaultSandboxRegistry,
+} from '../sandbox/index.js';
 
 export type FindingType =
   | 'MISSING_DISK'
@@ -39,6 +43,7 @@ export interface DoctorReport {
   findings: DoctorFinding[];
   proposed_repairs: ProposedRepair[];
   host_adapters?: HostHealthStatus[];
+  sandbox_environments?: SandboxHealthStatus[];
 }
 
 export class DoctorEngine {
@@ -46,7 +51,8 @@ export class DoctorEngine {
     public repoRoot: string,
     public config: MannostreeConfig,
     public git: GitEngine,
-    public store: MetadataStore
+    public store: MetadataStore,
+    public sandboxRegistry: SandboxRegistry = createDefaultSandboxRegistry()
   ) {}
 
   public async diagnose(): Promise<DoctorReport> {
@@ -187,6 +193,9 @@ export class DoctorEngine {
     // 5. Audit host adapters
     const hostAdapters = await this.auditHostAdapters();
 
+    // 6. Audit sandbox container runtimes
+    const sandboxEnvironments = await this.auditSandboxEnvironments();
+
     const errorCount = findings.filter((f) => f.severity === 'error').length;
     const warningCount = findings.filter((f) => f.severity === 'warning').length;
 
@@ -199,7 +208,29 @@ export class DoctorEngine {
       findings,
       proposed_repairs: proposedRepairs,
       host_adapters: hostAdapters,
+      sandbox_environments: sandboxEnvironments,
     };
+  }
+
+  public async auditSandboxEnvironments(): Promise<SandboxHealthStatus[]> {
+    const runtimes = this.sandboxRegistry.getAll();
+    const statuses: SandboxHealthStatus[] = [];
+
+    for (const runtime of runtimes) {
+      try {
+        const health = await runtime.checkHealth(this.config.sandbox);
+        statuses.push(health);
+      } catch (err: any) {
+        statuses.push({
+          runtime: runtime.type,
+          available: false,
+          error: err.message,
+          details: 'Failed to query runtime health check',
+        });
+      }
+    }
+
+    return statuses;
   }
 
   public async auditHostAdapters(): Promise<HostHealthStatus[]> {

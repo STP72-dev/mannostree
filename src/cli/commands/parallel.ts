@@ -248,6 +248,11 @@ export function registerParallelCommand(program: Command): void {
     .option('--auto-pick', 'Automatically pick the #1 ranked compliant variant', false)
     .option('--baseline', 'Sample base branch metrics for comparison', false)
     .option('--timeout <sec>', 'Timeout per probe in seconds', (val) => parseInt(val, 10))
+    .option('--sandbox <type>', 'Sandbox runtime driver (docker, podman, process)')
+    .option('--image <image>', 'Container image for clean-room probe execution')
+    .option('--cpus <n>', 'CPU core ceiling limit for probes', parseFloat)
+    .option('--memory <limit>', 'Memory quota limit for probes (e.g. 2GB)')
+    .option('--network <mode>', 'Network isolation policy for probes (none, bridge, host)')
     .action(async (feature: string, cmdOptions: any) => {
       const globalOpts = program.opts<GlobalOptions>();
       const cwd = globalOpts.cwd ? globalOpts.cwd : process.cwd();
@@ -267,6 +272,11 @@ export function registerParallelCommand(program: Command): void {
         baseline: cmdOptions.baseline,
         timeoutSeconds: cmdOptions.timeout,
         dryRun: globalOpts.dryRun,
+        sandbox: cmdOptions.sandbox,
+        image: cmdOptions.image,
+        cpus: cmdOptions.cpus,
+        memory: cmdOptions.memory,
+        network: cmdOptions.network,
       });
 
       formatOutput(result, globalOpts, (data) => {

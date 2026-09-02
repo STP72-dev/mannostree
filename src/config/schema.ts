@@ -119,6 +119,23 @@ export const FleetConfigSchema = z.object({
   policy: FleetPolicyConfigSchema.default({}),
 });
 
+export const SandboxResourceLimitsConfigSchema = z.object({
+  cpus: z.number().positive().optional(),
+  memory: z.string().optional(),
+  disk_quota: z.string().optional(),
+  timeout_seconds: z.number().int().positive().optional(),
+});
+
+export const SandboxConfigSchema = z.object({
+  default_runtime: z.enum(['docker', 'podman', 'process']).default('process'),
+  default_image: z.string().default('node:20-alpine'),
+  default_network: z.enum(['none', 'bridge', 'host', 'egress-only']).default('bridge'),
+  limits: SandboxResourceLimitsConfigSchema.default({}),
+  workdir: z.string().default('/workspace'),
+  auto_remove: z.boolean().default(true),
+  user_namespace: z.boolean().default(true),
+});
+
 export const MannostreeConfigSchema = z.object({
   version: z.number().default(1),
   default_base_branch: z.string().default('main'),
@@ -144,6 +161,7 @@ export const MannostreeConfigSchema = z.object({
   publish: PublishConfigSchema.default({}),
   agent: AgentConfigSchema.default({}),
   fleet: FleetConfigSchema.default({}),
+  sandbox: SandboxConfigSchema.default({}),
   integrations: IntegrationsConfigSchema.optional(),
   tags: z
     .object({
@@ -157,6 +175,8 @@ export type ProfileConfig = z.infer<typeof ProfileConfigSchema>;
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 export type FleetConfig = z.infer<typeof FleetConfigSchema>;
 export type FleetPolicyConfig = z.infer<typeof FleetPolicyConfigSchema>;
+export type SandboxConfig = z.infer<typeof SandboxConfigSchema>;
+export type SandboxResourceLimitsConfig = z.infer<typeof SandboxResourceLimitsConfigSchema>;
 
 
 

@@ -15,6 +15,10 @@ import {
   generateTaskContractMarkdown,
   parseTaskContractMarkdown,
 } from './contract.js';
+import {
+  SandboxRegistry,
+  createDefaultSandboxRegistry,
+} from '../sandbox/index.js';
 
 export class AgentRunner {
   private activeProcesses: Map<string, ChildProcess> = new Map();
@@ -22,7 +26,8 @@ export class AgentRunner {
   constructor(
     public repoRoot: string,
     public store: MetadataStore,
-    public config: MannostreeConfig
+    public config: MannostreeConfig,
+    public sandboxRegistry: SandboxRegistry = createDefaultSandboxRegistry()
   ) {}
 
   public interpolateCommand(
@@ -132,6 +137,9 @@ export class AgentRunner {
     const datePrefix = now.replace(/[-:T]/g, '').slice(0, 14);
     const sessionId = `session_${datePrefix}_${randomSuffix}`;
 
+    const sandboxType = options.sandbox || this.config.sandbox?.default_runtime || 'process';
+    const sandboxImage = options.image || this.config.sandbox?.default_image;
+
     const sessionRecord: AgentSessionRecord = {
       session_id: sessionId,
       worktree_id: worktreeRecord.id,
@@ -141,6 +149,8 @@ export class AgentRunner {
       state: 'dispatched',
       started_at: now,
       contract_path: path.relative(this.repoRoot, contractFilePath),
+      sandbox: sandboxType,
+      image: sandboxType !== 'process' ? sandboxImage : undefined,
     };
 
     if (dryRun) {
@@ -159,18 +169,51 @@ export class AgentRunner {
     // 6. Launch process if command provided
     if (interpolatedCmd) {
       const timeout = (timeoutSeconds || this.config.agent?.timeout_seconds || 1800) * 1000;
-      const child = spawn(interpolatedCmd, {
-        cwd: fullWorktreePath,
-        shell: true,
-        detached: true,
-        stdio: 'ignore',
-        env: {
-          ...process.env,
-          MANNOSTREE_WORKTREE: fullWorktreePath,
-          MANNOSTREE_CONTRACT: contractFilePath,
-          MANNOSTREE_SESSION: sessionId,
-        },
-      });
+
+      let executable = interpolatedCmd;
+      let spawnArgs: string[] = [];
+      let useShell = true;
+
+      if (sandboxType !== 'process') {
+        const runtime = this.sandboxRegistry.resolveRuntime(sandboxType);
+        if (runtime.buildExecutionArgs) {
+          const built = runtime.buildExecutionArgs(fullWorktreePath, {
+            command: interpolatedCmd,
+            image: sandboxImage,
+            network: options.network || this.config.sandbox?.default_network,
+            limits: {
+              cpus: options.cpus ?? this.config.sandbox?.limits?.cpus,
+              memory: options.memory ?? this.config.sandbox?.limits?.memory,
+            },
+            env: {
+              MANNOSTREE_WORKTREE: '/workspace',
+              MANNOSTREE_CONTRACT: path.join('.task', path.basename(contractFilePath)),
+              MANNOSTREE_SESSION: sessionId,
+            },
+          });
+          executable = built.executable;
+          spawnArgs = built.args;
+          useShell = false;
+        }
+      }
+
+      const child = useShell
+        ? spawn(executable, {
+            cwd: fullWorktreePath,
+            shell: true,
+            detached: true,
+            stdio: 'ignore',
+            env: {
+              ...process.env,
+              MANNOSTREE_WORKTREE: fullWorktreePath,
+              MANNOSTREE_CONTRACT: contractFilePath,
+              MANNOSTREE_SESSION: sessionId,
+            },
+          })
+        : spawn(executable, spawnArgs, {
+            detached: true,
+            stdio: 'ignore',
+          });
 
       child.unref();
 

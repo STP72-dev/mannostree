@@ -172,6 +172,17 @@ export function formatDoctorReport(report: DoctorReport): string {
     }
   }
 
+  if (report.sandbox_environments && report.sandbox_environments.length > 0) {
+    lines.push(chalk.bold('\nSandbox Environments & Container Isolation:'));
+    for (const s of report.sandbox_environments) {
+      const statusTag = s.available
+        ? chalk.green('[AVAILABLE]')
+        : chalk.yellow('[UNAVAILABLE]');
+      const details = s.details || (s.available ? 'Ready' : s.error || 'Not installed');
+      lines.push(`  ${statusTag} ${chalk.bold(s.runtime.toUpperCase())}: ${details}`);
+    }
+  }
+
   if (report.proposed_repairs.length > 0) {
     lines.push(chalk.bold('\nProposed Automated Repairs:'));
     for (const r of report.proposed_repairs) {

@@ -366,6 +366,8 @@ export interface AgentSessionRecord {
   error?: string;
   contract_path: string;
   scorecard_path?: string;
+  sandbox?: SandboxRuntimeType;
+  image?: string;
 }
 
 export interface QualityGateCommand {
@@ -443,6 +445,11 @@ export interface AgentDispatchOptions {
   timeoutSeconds?: number;
   parallel?: boolean;
   dryRun?: boolean;
+  sandbox?: SandboxRuntimeType;
+  image?: string;
+  cpus?: number;
+  memory?: string;
+  network?: NetworkIsolationMode;
 }
 
 export interface AgentVerifyOptions {
@@ -539,6 +546,11 @@ export interface ParallelEvalOptions {
   baseline?: boolean;
   timeoutSeconds?: number;
   dryRun?: boolean;
+  sandbox?: SandboxRuntimeType;
+  image?: string;
+  cpus?: number;
+  memory?: string;
+  network?: NetworkIsolationMode;
 }
 
 export type FleetSyncStatusType =
@@ -870,6 +882,74 @@ export interface HostHealthStatus {
   token_env_var?: string;
   reachable?: boolean;
   message: string;
+}
+
+// --------------------------------------------------------------------------
+// Movement 8: Sandboxed Container Execution Types
+// --------------------------------------------------------------------------
+
+export type SandboxRuntimeType = 'docker' | 'podman' | 'process';
+export type NetworkIsolationMode = 'none' | 'bridge' | 'host' | 'egress-only';
+
+export interface SandboxResourceLimits {
+  cpus?: number;
+  memory?: string;
+  disk_quota?: string;
+  timeout_seconds?: number;
+}
+
+export interface SandboxExecutionOptions {
+  command: string;
+  args?: string[];
+  image?: string;
+  runtime?: SandboxRuntimeType;
+  network?: NetworkIsolationMode;
+  limits?: SandboxResourceLimits;
+  env?: Record<string, string>;
+  interactive?: boolean;
+  dryRun?: boolean;
+}
+
+export interface SandboxExecutionResult {
+  runtime: SandboxRuntimeType;
+  container_id?: string;
+  image?: string;
+  command: string;
+  exit_code: number;
+  duration_ms: number;
+  stdout: string;
+  stderr: string;
+  timed_out: boolean;
+  oom_killed?: boolean;
+  receipt_path?: string;
+}
+
+export interface SandboxReceipt {
+  version: 1;
+  id: string;
+  worktree_id: string;
+  runtime: SandboxRuntimeType;
+  container_id?: string;
+  image?: string;
+  command: string;
+  exit_code: number;
+  duration_ms: number;
+  peak_memory_bytes?: number;
+  cpu_time_ms?: number;
+  timed_out: boolean;
+  oom_killed: boolean;
+  timestamp: string;
+}
+
+export interface SandboxHealthStatus {
+  runtime: SandboxRuntimeType;
+  available: boolean;
+  version?: string;
+  daemon_running?: boolean;
+  cgroups_version?: string;
+  rootless?: boolean;
+  details?: string;
+  error?: string;
 }
 
 

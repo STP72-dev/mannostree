@@ -67,12 +67,15 @@ import {
   FleetMergeSyncReport,
   FleetBatchPublishOptions,
   FleetBatchPublishReport,
+  SandboxRuntimeType,
+  NetworkIsolationMode,
+  SandboxExecutionResult,
 } from '../types/index.js';
-
-
-
-
-
+import {
+  createDefaultSandboxRegistry,
+  SandboxRegistry,
+  writeSandboxReceipt,
+} from '../sandbox/index.js';
 
 export interface SpawnOptions {
   name: string;
@@ -145,7 +148,16 @@ export interface EnvOptions {
 }
 
 export interface ExecOptions {
+  command?: string;
+  commandArgs?: string[];
   inheritStdio?: boolean;
+  sandbox?: SandboxRuntimeType;
+  image?: string;
+  cpus?: number;
+  memory?: string;
+  network?: NetworkIsolationMode;
+  timeout?: number;
+  dryRun?: boolean;
 }
 
 export class MannostreeOrchestrator {
@@ -161,6 +173,7 @@ export class MannostreeOrchestrator {
   public qualityGatesRunner: QualityGatesRunner;
   public matrixEvaluator: MatrixEvaluator;
   public fleetEngine: FleetEngine;
+  public sandboxRegistry: SandboxRegistry;
 
   constructor(
     public repoRoot: string,
@@ -192,6 +205,7 @@ export class MannostreeOrchestrator {
     this.qualityGatesRunner = new QualityGatesRunner();
     this.matrixEvaluator = new MatrixEvaluator(repoRoot, this.git, this.store, config);
     this.fleetEngine = new FleetEngine(repoRoot, config, this.git, this.store);
+    this.sandboxRegistry = createDefaultSandboxRegistry();
   }
 
 
@@ -676,9 +690,9 @@ export class MannostreeOrchestrator {
 
   public async exec(
     id: string,
-    commandArgs: string[],
+    commandOrArgs: string | string[] | ExecOptions,
     options: ExecOptions = {}
-  ): Promise<{ exitCode: number; stdout?: string; stderr?: string }> {
+  ): Promise<{ exitCode: number; stdout: string; stderr: string; ok: boolean; result: SandboxExecutionResult }> {
     const record = await this.store.getWorktree(id);
     if (!record) {
       throw new MannostreeError(
@@ -687,10 +701,77 @@ export class MannostreeOrchestrator {
       );
     }
 
+    let commandStr: string;
+    let actualOpts: ExecOptions = {};
+
+    if (Array.isArray(commandOrArgs)) {
+      commandStr = commandOrArgs.join(' ');
+      actualOpts = options;
+    } else if (typeof commandOrArgs === 'string') {
+      commandStr = commandOrArgs;
+      actualOpts = options;
+    } else {
+      actualOpts = commandOrArgs || {};
+      commandStr = actualOpts.command || (actualOpts.commandArgs ? actualOpts.commandArgs.join(' ') : '');
+    }
+
     const profile = this.getProfile(record.profile);
     const fullPath = path.resolve(this.repoRoot, record.worktree_path);
 
-    return this.setupEngine.execInWorktree(fullPath, commandArgs, profile, options);
+    if (actualOpts.inheritStdio && !actualOpts.sandbox) {
+      const legacyRes = await this.setupEngine.execInWorktree(fullPath, [commandStr], profile, { inheritStdio: true });
+      return {
+        exitCode: legacyRes.exitCode,
+        stdout: legacyRes.stdout || '',
+        stderr: legacyRes.stderr || '',
+        ok: legacyRes.exitCode === 0,
+        result: {
+          runtime: 'process',
+          command: commandStr,
+          exit_code: legacyRes.exitCode,
+          duration_ms: 0,
+          stdout: legacyRes.stdout || '',
+          stderr: legacyRes.stderr || '',
+          timed_out: false,
+        },
+      };
+    }
+
+    const runtimeType = actualOpts.sandbox || this.config.sandbox?.default_runtime || 'process';
+    const runtime = this.sandboxRegistry.resolveRuntime(runtimeType);
+
+    const limits = {
+      cpus: actualOpts.cpus ?? this.config.sandbox?.limits?.cpus,
+      memory: actualOpts.memory ?? this.config.sandbox?.limits?.memory,
+      timeout_seconds: actualOpts.timeout ?? this.config.sandbox?.limits?.timeout_seconds,
+    };
+
+    const execRes = await runtime.execute(fullPath, {
+      command: commandStr,
+      image: actualOpts.image || this.config.sandbox?.default_image,
+      network: actualOpts.network || this.config.sandbox?.default_network,
+      limits,
+      env: profile?.env_vars,
+      dryRun: actualOpts.dryRun,
+    });
+
+    if (!actualOpts.dryRun && fs.existsSync(fullPath)) {
+      const { receiptPath } = writeSandboxReceipt({
+        worktreeId: id,
+        worktreePath: fullPath,
+        artifactDirName: this.config.artifact_dir_name,
+        result: execRes,
+      });
+      execRes.receipt_path = receiptPath;
+    }
+
+    return {
+      exitCode: execRes.exit_code,
+      stdout: execRes.stdout,
+      stderr: execRes.stderr,
+      ok: execRes.exit_code === 0,
+      result: execRes,
+    };
   }
 
   public async doctor(

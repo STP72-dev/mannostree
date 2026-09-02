@@ -20,6 +20,7 @@ export * from './core/matrix-eval.js';
 export * from './core/fleet.js';
 export * from './core/orchestrator.js';
 export * from './adapters/index.js';
+export * from './sandbox/index.js';
 export * from './cli/output.js';
 export * from './cli/index.js';
 

@@ -17,6 +17,10 @@ import {
   VariantProbeResult,
   WorktreeRecord,
 } from '../types/index.js';
+import {
+  SandboxRegistry,
+  createDefaultSandboxRegistry,
+} from '../sandbox/index.js';
 
 export interface ExecuteProbeOptions {
   timeoutSeconds?: number;
@@ -27,7 +31,8 @@ export class MatrixEvaluator {
     public repoRoot: string,
     public git: GitEngine,
     public store: MetadataStore,
-    public config: MannostreeConfig
+    public config: MannostreeConfig,
+    public sandboxRegistry: SandboxRegistry = createDefaultSandboxRegistry()
   ) {}
 
   /**
@@ -98,10 +103,61 @@ export class MatrixEvaluator {
   public async executeProbe(
     worktreePath: string,
     probe: MatrixProbeSpec,
-    options: ExecuteProbeOptions = {}
+    options: ExecuteProbeOptions = {},
+    sandboxOpts?: {
+      sandbox?: string;
+      image?: string;
+      cpus?: number;
+      memory?: string;
+      network?: any;
+    }
   ): Promise<VariantProbeResult> {
     const timeoutMs = (probe.timeout_seconds || options.timeoutSeconds || 120) * 1000;
     const startTime = Date.now();
+
+    const sandboxType = sandboxOpts?.sandbox || this.config.sandbox?.default_runtime || 'process';
+
+    if (sandboxType !== 'process') {
+      const runtime = this.sandboxRegistry.resolveRuntime(sandboxType as any);
+      const execRes = await runtime.execute(worktreePath, {
+        command: probe.command,
+        image: sandboxOpts?.image || this.config.sandbox?.default_image,
+        network: sandboxOpts?.network || this.config.sandbox?.default_network,
+        limits: {
+          cpus: sandboxOpts?.cpus ?? this.config.sandbox?.limits?.cpus,
+          memory: sandboxOpts?.memory ?? this.config.sandbox?.limits?.memory,
+          timeout_seconds: probe.timeout_seconds || options.timeoutSeconds || 120,
+        },
+      });
+
+      let numericValue: number | undefined;
+      if (probe.metric_regex) {
+        try {
+          const match = execRes.stdout.match(new RegExp(probe.metric_regex));
+          if (match && match[1]) {
+            const parsed = parseFloat(match[1]);
+            if (!isNaN(parsed)) {
+              numericValue = parsed;
+            }
+          }
+        } catch {
+          // ignore regex failure
+        }
+      }
+
+      return {
+        probe_name: probe.name,
+        category: probe.category,
+        command: probe.command,
+        passed: execRes.exit_code === 0 && !execRes.timed_out,
+        exit_code: execRes.exit_code,
+        duration_ms: execRes.duration_ms,
+        stdout: execRes.stdout,
+        stderr: execRes.timed_out ? `Probe timed out.\n${execRes.stderr}` : execRes.stderr,
+        numeric_value: numericValue,
+        metric_unit: probe.metric_unit,
+      };
+    }
 
     return new Promise<VariantProbeResult>((resolve) => {
       let stdout = '';
@@ -213,9 +269,20 @@ export class MatrixEvaluator {
         continue;
       }
 
-      const res = await this.executeProbe(fullPath, probe, {
-        timeoutSeconds: options.timeoutSeconds,
-      });
+      const res = await this.executeProbe(
+        fullPath,
+        probe,
+        {
+          timeoutSeconds: options.timeoutSeconds,
+        },
+        {
+          sandbox: options.sandbox,
+          image: options.image,
+          cpus: options.cpus,
+          memory: options.memory,
+          network: options.network,
+        }
+      );
       probeResults.push(res);
     }
 
