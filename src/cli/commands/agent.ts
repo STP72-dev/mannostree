@@ -21,7 +21,9 @@ export function registerAgentCommand(program: Command): void {
     .option('--title <title>', 'Task title')
     .option('--problem <text>', 'Problem statement description')
     .option('--scope <items...>', 'Scope deliverable items')
+    .option('--criteria <items...>', 'Acceptance criteria verification points')
     .option('--timeout <seconds>', 'Execution timeout in seconds', (val) => parseInt(val, 10))
+
     .option('--parallel', 'Dispatch to all variants in an experiment', false)
     .option('--sandbox <type>', 'Sandbox runtime driver (docker, podman, process)')
     .option('--image <image>', 'Container image for sandbox execution')

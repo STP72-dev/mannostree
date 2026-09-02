@@ -12,7 +12,14 @@ export const TaskMetadataSchema = z.object({
   issue_title: z.string().optional(),
   task_contract_file: z.string().optional(),
   implementation_plan_file: z.string().optional(),
-});
+  issue_key: z.string().optional(),
+  issue_provider: z.enum(['jira', 'linear', 'github', 'generic']).optional(),
+  issue_url: z.string().optional(),
+  issue_status: z.string().optional(),
+  last_synced_at: z.string().optional(),
+  auto_transition: z.boolean().optional(),
+}).passthrough();
+
 
 export const ArtifactsMetadataSchema = z.object({
   artifact_root: z.string(),
@@ -846,6 +853,87 @@ export const PolyHealthStatusSchema = z.object({
   broken_links_count: z.number().int().nonnegative(),
   details: z.string(),
 });
+
+// --------------------------------------------------------------------------
+// Movement 10: Issue Tracker Schemas
+// --------------------------------------------------------------------------
+
+export const IssueTrackerProviderSchema = z.enum(['jira', 'linear', 'github', 'generic']);
+
+export const IssueRecordSchema = z.object({
+  version: z.number().default(1),
+  key: z.string(),
+  provider: IssueTrackerProviderSchema,
+  title: z.string(),
+  description: z.string().default(''),
+  status: z.string(),
+  status_category: z.enum(['todo', 'in_progress', 'done', 'cancelled']).optional(),
+  priority: z.string().optional(),
+  assignee: z
+    .object({
+      name: z.string(),
+      email: z.string().optional(),
+    })
+    .optional(),
+  labels: z.array(z.string()).default([]),
+  url: z.string(),
+  acceptance_criteria: z.array(z.string()).default([]),
+  created_at: z.string(),
+  updated_at: z.string(),
+  last_synced_at: z.string(),
+});
+
+export const WorktreeIssueAttachmentSchema = z.object({
+  issue_key: z.string(),
+  issue_provider: IssueTrackerProviderSchema,
+  issue_url: z.string(),
+  issue_title: z.string(),
+  issue_status: z.string(),
+  last_synced_at: z.string(),
+  auto_transition: z.boolean().default(true),
+});
+
+export const IssueTransitionResultSchema = z.object({
+  key: z.string(),
+  provider: IssueTrackerProviderSchema,
+  previous_status: z.string(),
+  new_status: z.string(),
+  transition_id: z.string().optional(),
+  success: z.boolean(),
+  mode: z.enum(['transitioned', 'noop', 'failed']),
+  error: z.string().optional(),
+});
+
+export const IssueCommentResultSchema = z.object({
+  key: z.string(),
+  provider: IssueTrackerProviderSchema,
+  comment_id: z.string().optional(),
+  comment_url: z.string().optional(),
+  success: z.boolean(),
+  posted_at: z.string(),
+});
+
+export const IssueDriftSummarySchema = z.object({
+  worktree_id: z.string(),
+  worktree_branch: z.string(),
+  local_lifecycle_state: z.string(),
+  issue_key: z.string(),
+  issue_provider: IssueTrackerProviderSchema,
+  remote_status: z.string(),
+  drift_detected: z.boolean(),
+  drift_reason: z.string().optional(),
+});
+
+export const IssueTrackerHealthStatusSchema = z.object({
+  provider: IssueTrackerProviderSchema,
+  available: z.boolean(),
+  token_configured: z.boolean(),
+  host_reachable: z.boolean(),
+  project_accessible: z.boolean(),
+  details: z.string().optional(),
+  error: z.string().optional(),
+});
+
 
 
 

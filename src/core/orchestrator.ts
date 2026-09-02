@@ -70,6 +70,7 @@ import {
   SandboxRuntimeType,
   NetworkIsolationMode,
   SandboxExecutionResult,
+  IssueTrackerProvider,
 } from '../types/index.js';
 import {
   createDefaultSandboxRegistry,
@@ -77,6 +78,11 @@ import {
   writeSandboxReceipt,
 } from '../sandbox/index.js';
 import { PolyEngine, PolyLinkEngine, PolyPublishEngine } from '../poly/index.js';
+import {
+  IssueTrackerRegistry,
+  createDefaultIssueTrackerRegistry,
+  IssueSyncEngine,
+} from '../issues/index.js';
 
 export interface SpawnOptions {
   name: string;
@@ -85,6 +91,9 @@ export interface SpawnOptions {
   profile?: string;
   noSetup?: boolean;
   env?: 'copy' | 'link' | 'skip' | 'generate';
+  issue?: string;
+  issueProvider?: IssueTrackerProvider;
+  noIssueTransition?: boolean;
   dryRun?: boolean;
 }
 
@@ -94,6 +103,7 @@ export interface ListOptions {
   tag?: string;
   archived?: boolean;
 }
+
 
 export interface InfoOptions {
   worktreeId?: string;
@@ -186,6 +196,8 @@ export class MannostreeOrchestrator {
   public polyEngine: PolyEngine;
   public polyLinkEngine: PolyLinkEngine;
   public polyPublishEngine: PolyPublishEngine;
+  public issueRegistry: IssueTrackerRegistry;
+  public issueSyncEngine: IssueSyncEngine;
 
   constructor(
     public repoRoot: string,
@@ -194,7 +206,6 @@ export class MannostreeOrchestrator {
   ) {
     this.git = new GitEngine(repoRoot);
     this.store = new MetadataStore(repoRoot, config);
-    this.doctorEngine = new DoctorEngine(repoRoot, config, this.git, this.store);
     this.setupEngine = new SetupEngine(repoRoot);
     this.parallelEngine = new ParallelEngine(
       repoRoot,
@@ -221,14 +232,27 @@ export class MannostreeOrchestrator {
     this.polyLinkEngine = new PolyLinkEngine(this.store);
     this.polyEngine = new PolyEngine(config, this.store, this.git, this.polyLinkEngine, this.sandboxRegistry);
     this.polyPublishEngine = new PolyPublishEngine(config, this.store, this.git);
+    this.issueRegistry = createDefaultIssueTrackerRegistry(config.issues);
+    this.issueSyncEngine = new IssueSyncEngine(this.store, this.issueRegistry, config);
+    this.doctorEngine = new DoctorEngine(
+      repoRoot,
+      config,
+      this.git,
+      this.store,
+      this.sandboxRegistry,
+      undefined,
+      this.issueRegistry
+    );
   }
 
 
 
+
   public getProfile(name: string = 'default'): ProfileConfig {
+    const profiles = this.config.profiles || {};
     return (
-      this.config.profiles[name] ||
-      this.config.profiles.default || {
+      profiles[name] ||
+      profiles.default || {
         install_commands: [],
         env_mode: 'skip',
         env_files: [],
@@ -237,6 +261,7 @@ export class MannostreeOrchestrator {
       }
     );
   }
+
 
   public async spawn(options: SpawnOptions): Promise<CommandOutput<WorktreeRecord>> {
     const {
@@ -405,6 +430,47 @@ export class MannostreeOrchestrator {
       await this.store.saveWorktree(worktreeRecord);
     }
 
+    if (options.issue) {
+      try {
+        const { record } = await this.issueSyncEngine.ingestIssue({
+          key: options.issue,
+          worktreeId: id,
+          provider: options.issueProvider,
+          dryRun,
+        });
+
+        await this.issueSyncEngine.scaffoldTaskContract(record, fullWorktreePath, dryRun);
+
+        if (worktreeRecord.task) {
+          (worktreeRecord.task as any).issue_key = record.key;
+          (worktreeRecord.task as any).issue_provider = record.provider;
+          (worktreeRecord.task as any).issue_url = record.url;
+          (worktreeRecord.task as any).issue_title = record.title;
+          (worktreeRecord.task as any).issue_status = record.status;
+          (worktreeRecord.task as any).last_synced_at = record.last_synced_at;
+          (worktreeRecord.task as any).auto_transition = this.config.issues?.auto_transition ?? true;
+        }
+
+        if (!dryRun) {
+          await this.store.saveWorktree(worktreeRecord);
+        }
+
+        if (!options.noIssueTransition && (this.config.issues?.auto_transition ?? true)) {
+          const targetState = this.config.issues?.transitions?.on_spawn || 'In Progress';
+          await this.issueSyncEngine.transitionIssue({
+            key: options.issue,
+            status: targetState,
+            worktreeId: id,
+            provider: options.issueProvider,
+            dryRun,
+          });
+        }
+      } catch (err: any) {
+        warnings.push(`Issue tracker sync warning: ${err.message}`);
+      }
+    }
+
+
     return {
       command: 'spawn',
       ok: true,
@@ -414,6 +480,7 @@ export class MannostreeOrchestrator {
       errors: [],
     };
   }
+
 
   public async list(
     options: ListOptions = {}
@@ -1312,9 +1379,34 @@ export class MannostreeOrchestrator {
       if (prRes.mode === 'published') {
         record.lifecycle_state = 'PR_OPEN';
         record.status = 'pr_open';
+
+        // Auto-transition linked issue if configured
+        if ((record.task as any)?.issue_key && (this.config.issues?.auto_transition ?? true)) {
+          const issueKey = (record.task as any).issue_key;
+          const issueProvider = (record.task as any).issue_provider;
+          const targetState = this.config.issues?.transitions?.on_pr || 'In Review';
+          try {
+            await this.issueSyncEngine.transitionIssue({
+              key: issueKey,
+              status: targetState,
+              worktreeId: id,
+              provider: issueProvider,
+            });
+            if (prRes.pr_url) {
+              await this.issueSyncEngine.postComment({
+                key: issueKey,
+                message: `Pull Request opened: [PR #${prRes.pr_number || ''}](${prRes.pr_url})`,
+                provider: issueProvider,
+              });
+            }
+          } catch {
+            // non-fatal
+          }
+        }
       }
       await this.store.saveWorktree(record);
     }
+
 
     return {
       command: 'pr',

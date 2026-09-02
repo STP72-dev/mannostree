@@ -196,6 +196,17 @@ export function formatDoctorReport(report: DoctorReport): string {
     }
   }
 
+  if (report.issue_trackers && report.issue_trackers.length > 0) {
+    lines.push(chalk.bold('\nIssue Tracker Adapters & Synchronization:'));
+    for (const it of report.issue_trackers) {
+      const statusTag = it.available
+        ? chalk.green('[AVAILABLE]')
+        : chalk.yellow('[UNAVAILABLE]');
+      const details = it.details || (it.available ? 'Connected' : it.error || 'Not configured');
+      lines.push(`  ${statusTag} ${chalk.bold(it.provider.toUpperCase())}: ${details}`);
+    }
+  }
+
   if (report.proposed_repairs.length > 0) {
     lines.push(chalk.bold('\nProposed Automated Repairs:'));
     for (const r of report.proposed_repairs) {
@@ -203,6 +214,7 @@ export function formatDoctorReport(report: DoctorReport): string {
     }
     lines.push(chalk.dim('\nRun `mannostree doctor --fix --yes` to apply these repairs.'));
   }
+
 
   return lines.join('\n');
 }

@@ -194,10 +194,83 @@ export const MannostreeConfigSchema = z.object({
   fleet: FleetConfigSchema.default({}),
   sandbox: SandboxConfigSchema.default({}),
   poly: PolyConfigSchema.default({}),
+  issues: z
+    .object({
+      default_provider: z.enum(['jira', 'linear', 'github', 'generic']).default('jira'),
+      auto_transition: z.boolean().default(true),
+      transitions: z
+        .object({
+          on_spawn: z.string().default('In Progress'),
+          on_pr: z.string().default('In Review'),
+          on_archive: z.string().default('Done'),
+          on_drop: z.string().default('Cancelled'),
+        })
+        .default({}),
+      jira: z
+        .object({
+          host: z.string().optional(),
+          project_key: z.string().optional(),
+          api_version: z.string().default('3'),
+        })
+        .optional(),
+      linear: z
+        .object({
+          team_key: z.string().optional(),
+        })
+        .optional(),
+      github: z
+        .object({
+          owner: z.string().optional(),
+          repo: z.string().optional(),
+        })
+        .optional(),
+      generic: z
+        .object({
+          webhook_url: z.string().optional(),
+        })
+        .optional(),
+    })
+    .optional(),
   integrations: IntegrationsConfigSchema.optional(),
   tags: z
     .object({
       defaults: z.array(z.string()).default([]),
+    })
+    .optional(),
+});
+
+export const IssueTrackerConfigSchema = z.object({
+  default_provider: z.enum(['jira', 'linear', 'github', 'generic']).default('jira'),
+  auto_transition: z.boolean().default(true),
+  transitions: z
+    .object({
+      on_spawn: z.string().default('In Progress'),
+      on_pr: z.string().default('In Review'),
+      on_archive: z.string().default('Done'),
+      on_drop: z.string().default('Cancelled'),
+    })
+    .default({}),
+  jira: z
+    .object({
+      host: z.string().optional(),
+      project_key: z.string().optional(),
+      api_version: z.string().default('3'),
+    })
+    .optional(),
+  linear: z
+    .object({
+      team_key: z.string().optional(),
+    })
+    .optional(),
+  github: z
+    .object({
+      owner: z.string().optional(),
+      repo: z.string().optional(),
+    })
+    .optional(),
+  generic: z
+    .object({
+      webhook_url: z.string().optional(),
     })
     .optional(),
 });
@@ -210,6 +283,8 @@ export type FleetPolicyConfig = z.infer<typeof FleetPolicyConfigSchema>;
 export type SandboxConfig = z.infer<typeof SandboxConfigSchema>;
 export type SandboxResourceLimitsConfig = z.infer<typeof SandboxResourceLimitsConfigSchema>;
 export type PolyConfig = z.infer<typeof PolyConfigSchema>;
+export type IssueTrackerConfig = z.infer<typeof IssueTrackerConfigSchema>;
+
 
 
 

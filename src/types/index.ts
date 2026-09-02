@@ -1137,6 +1137,117 @@ export interface PolyHealthStatus {
   details: string;
 }
 
+// --------------------------------------------------------------------------
+// Movement 10: Issue Tracker Bi-directional Sync Types
+// --------------------------------------------------------------------------
+
+export type IssueTrackerProvider = 'jira' | 'linear' | 'github' | 'generic';
+
+export interface IssueRecord {
+  version: number;
+  key: string;
+  provider: IssueTrackerProvider;
+  title: string;
+  description: string;
+  status: string;
+  status_category?: 'todo' | 'in_progress' | 'done' | 'cancelled';
+  priority?: string;
+  assignee?: {
+    name: string;
+    email?: string;
+  };
+  labels: string[];
+  url: string;
+  acceptance_criteria: string[];
+  created_at: string;
+  updated_at: string;
+  last_synced_at: string;
+}
+
+export interface WorktreeIssueAttachment {
+  issue_key: string;
+  issue_provider: IssueTrackerProvider;
+  issue_url: string;
+  issue_title: string;
+  issue_status: string;
+  last_synced_at: string;
+  auto_transition: boolean;
+}
+
+export interface IssueTransitionResult {
+  key: string;
+  provider: IssueTrackerProvider;
+  previous_status: string;
+  new_status: string;
+  transition_id?: string;
+  success: boolean;
+  mode: 'transitioned' | 'noop' | 'failed';
+  error?: string;
+}
+
+export interface IssueCommentResult {
+  key: string;
+  provider: IssueTrackerProvider;
+  comment_id?: string;
+  comment_url?: string;
+  success: boolean;
+  posted_at: string;
+}
+
+export interface IssueDriftSummary {
+  worktree_id: string;
+  worktree_branch: string;
+  local_lifecycle_state: string;
+  issue_key: string;
+  issue_provider: IssueTrackerProvider;
+  remote_status: string;
+  drift_detected: boolean;
+  drift_reason?: string;
+}
+
+export interface IssueTrackerHealthStatus {
+  provider: IssueTrackerProvider;
+  available: boolean;
+  token_configured: boolean;
+  host_reachable: boolean;
+  project_accessible: boolean;
+  details?: string;
+  error?: string;
+}
+
+export interface IssueIngestOptions {
+  key: string;
+  worktreeId?: string;
+  provider?: IssueTrackerProvider;
+  dryRun?: boolean;
+}
+
+export interface IssueTransitionOptions {
+  key: string;
+  status: string;
+  worktreeId?: string;
+  provider?: IssueTrackerProvider;
+  dryRun?: boolean;
+}
+
+export interface IssueCommentOptions {
+  key: string;
+  message: string;
+  provider?: IssueTrackerProvider;
+  worktreeId?: string;
+  dryRun?: boolean;
+}
+
+export interface IssueSyncOptions {
+  key?: string;
+  worktreeId?: string;
+  comment?: boolean;
+  evidence?: boolean;
+  provider?: IssueTrackerProvider;
+  dryRun?: boolean;
+}
+
+
 
 
 

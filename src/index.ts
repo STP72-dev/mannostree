@@ -22,8 +22,10 @@ export * from './core/orchestrator.js';
 export * from './adapters/index.js';
 export * from './sandbox/index.js';
 export * from './poly/index.js';
+export * from './issues/index.js';
 export * from './cli/output.js';
 export * from './cli/index.js';
+
 
 
 

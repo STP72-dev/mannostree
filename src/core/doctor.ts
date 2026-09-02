@@ -4,13 +4,14 @@ import { MannostreeConfig } from '../config/schema.js';
 import { GitEngine } from '../git/engine.js';
 import { MetadataStore, readJson } from '../metadata/store.js';
 import { WorktreeRecordSchema } from '../metadata/schema.js';
-import { HostHealthStatus, SandboxHealthStatus, PolyHealthStatus } from '../types/index.js';
+import { HostHealthStatus, SandboxHealthStatus, PolyHealthStatus, IssueTrackerHealthStatus } from '../types/index.js';
 import { createDefaultAdapterRegistry } from '../adapters/index.js';
 import {
   SandboxRegistry,
   createDefaultSandboxRegistry,
 } from '../sandbox/index.js';
 import { findPolyManifest, loadPolyManifest } from '../poly/manifest.js';
+import { IssueTrackerRegistry, createDefaultIssueTrackerRegistry } from '../issues/base.js';
 
 export type FindingType =
   | 'MISSING_DISK'
@@ -46,6 +47,7 @@ export interface DoctorReport {
   host_adapters?: HostHealthStatus[];
   sandbox_environments?: SandboxHealthStatus[];
   poly_repositories?: PolyHealthStatus;
+  issue_trackers?: IssueTrackerHealthStatus[];
 }
 
 export class DoctorEngine {
@@ -54,8 +56,11 @@ export class DoctorEngine {
     public config: MannostreeConfig,
     public git: GitEngine,
     public store: MetadataStore,
-    public sandboxRegistry: SandboxRegistry = createDefaultSandboxRegistry()
+    public sandboxRegistry: SandboxRegistry = createDefaultSandboxRegistry(),
+    public hostRegistry?: any,
+    public issueRegistry?: IssueTrackerRegistry
   ) {}
+
 
   public async diagnose(): Promise<DoctorReport> {
     const findings: DoctorFinding[] = [];
@@ -201,6 +206,9 @@ export class DoctorEngine {
     // 7. Audit poly-repository manifests & links
     const polyRepositories = await this.auditPolyRepositories();
 
+    // 8. Audit issue tracker adapters
+    const issueTrackers = await this.auditIssueTrackers();
+
     const errorCount = findings.filter((f) => f.severity === 'error').length;
     const warningCount = findings.filter((f) => f.severity === 'warning').length;
 
@@ -215,10 +223,36 @@ export class DoctorEngine {
       host_adapters: hostAdapters,
       sandbox_environments: sandboxEnvironments,
       poly_repositories: polyRepositories,
+      issue_trackers: issueTrackers,
     };
   }
 
+  public async auditIssueTrackers(): Promise<IssueTrackerHealthStatus[]> {
+    const registry = this.issueRegistry || createDefaultIssueTrackerRegistry(this.config?.issues);
+    const adapters = registry.listAdapters();
+    const statuses: IssueTrackerHealthStatus[] = [];
+
+    for (const adapter of adapters) {
+      try {
+        const status = await adapter.checkHealth();
+        statuses.push(status);
+      } catch (err: any) {
+        statuses.push({
+          provider: adapter.provider,
+          available: false,
+          token_configured: false,
+          host_reachable: false,
+          project_accessible: false,
+          error: `Issue tracker health check error: ${err.message}`,
+        });
+      }
+    }
+
+    return statuses;
+  }
+
   public async auditPolyRepositories(): Promise<PolyHealthStatus> {
+
     const manifestPath = findPolyManifest(this.repoRoot);
     if (!manifestPath) {
       return {

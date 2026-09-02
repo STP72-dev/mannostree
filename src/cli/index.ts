@@ -15,7 +15,7 @@ import { registerEnvCommand } from './commands/env.js';
 import { registerExecCommand } from './commands/exec.js';
 import { registerParallelCommand } from './commands/parallel.js';
 import { registerPrCommand } from './commands/pr.js';
-import { registerIssueCommand } from './commands/issue.js';
+import { registerIssueCommands } from './commands/issue.js';
 import { registerTaskCommand } from './commands/task.js';
 import { registerHandoffCommand } from './commands/handoff.js';
 import { registerArchiveCommand } from './commands/archive.js';
@@ -67,9 +67,10 @@ export function createProgram(): Command {
 
   // Phase 5 commands
   registerPrCommand(program);
-  registerIssueCommand(program);
+  registerIssueCommands(program);
   registerTaskCommand(program);
   registerHandoffCommand(program);
+
 
   // Movement 1, 3 & 9 commands
   registerAgentCommand(program);

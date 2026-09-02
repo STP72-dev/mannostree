@@ -12,6 +12,7 @@ import {
   PolyLinksFileRecordSchema,
   PolyReleaseManifestSchema,
   PolyWorktreeGroupRecordSchema,
+  IssueRecordSchema,
 } from './schema.js';
 import {
   ExitCode,
@@ -26,6 +27,7 @@ import {
   PolyLinksFileRecord,
   PolyReleaseManifest,
   PolyWorktreeGroupRecord,
+  IssueRecord,
 } from '../types/index.js';
 
 import { TransactionJournal } from './journal.js';
@@ -90,20 +92,23 @@ export class MetadataStore {
     public repoRoot: string,
     public config: MannostreeConfig
   ) {
-    this.metadataRoot = path.resolve(repoRoot, config.metadata_root);
-    this.worktreesDir = path.join(this.metadataRoot, 'worktrees');
-    this.experimentsDir = path.join(this.metadataRoot, 'experiments');
+    const metaRoot = config.metadata_root || (config as any).metadata_dir_name || '.mannostree';
+    this.metadataRoot = path.resolve(repoRoot, metaRoot);
+    this.worktreesDir = path.join(this.metadataRoot, (config as any).worktrees_dir_name || 'worktrees');
+    this.experimentsDir = path.join(this.metadataRoot, (config as any).experiments_dir_name || 'experiments');
     this.archiveDir = path.join(this.metadataRoot, config.archive_dir_name || 'archives');
     this.sessionsDir = path.join(this.metadataRoot, config.sessions_dir_name || 'sessions');
     this.leasesDir = path.join(this.metadataRoot, config.leases_dir_name || 'leases');
+
     this.registryFile = path.join(this.metadataRoot, 'registry.json');
 
     this.journal = new TransactionJournal(
       repoRoot,
-      config.metadata_root,
+      metaRoot,
       config.journal_dir_name || 'journal'
     );
   }
+
 
   public getJournal(): TransactionJournal {
     return this.journal;
@@ -151,17 +156,18 @@ export class MetadataStore {
     const registry: RegistryRecord = {
       version: 1,
       repo_root: this.repoRoot,
-      default_base_branch: this.config.default_base_branch,
-      worktree_root: this.config.worktree_root,
-      metadata_root: this.config.metadata_root,
-      artifact_dir_name: this.config.artifact_dir_name,
+      default_base_branch: this.config.default_base_branch || 'main',
+      worktree_root: this.config.worktree_root || '.worktrees',
+      metadata_root: this.config.metadata_root || (this.config as any).metadata_dir_name || '.mannostree',
+      artifact_dir_name: this.config.artifact_dir_name || '.task',
       created_at: now,
       updated_at: now,
       worktrees: [],
       experiments: [],
     };
 
-    writeAtomicJson(this.registryFile, registry);
+    await this.saveRegistry(registry);
+
     return registry;
   }
 
@@ -662,7 +668,76 @@ export class MetadataStore {
     const filePath = this.getPolyReleaseManifestPath(manifest.feature);
     writeAtomicJson(filePath, validated.data);
   }
+
+  public getIssueRecordPath(key: string): string {
+    const sanitizedKey = key.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const issuesDir = path.join(this.metadataRoot, 'issues');
+    return path.join(issuesDir, `${sanitizedKey}.json`);
+  }
+
+  public async getIssueRecord(key: string): Promise<IssueRecord | null> {
+    const filePath = this.getIssueRecordPath(key);
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+
+    const data = readJson<unknown>(filePath);
+    const parsed = IssueRecordSchema.safeParse(data);
+    if (!parsed.success) {
+      throw new MannostreeError(
+        `Invalid issue record schema for ${key} in ${filePath}:\n${parsed.error.message}`,
+        ExitCode.METADATA_INCONSISTENCY
+      );
+    }
+    return parsed.data as IssueRecord;
+  }
+
+  public async saveIssueRecord(record: IssueRecord): Promise<void> {
+    const validated = IssueRecordSchema.safeParse(record);
+    if (!validated.success) {
+      throw new MannostreeError(
+        `Issue record validation failed for ${record.key}: ${validated.error.message}`,
+        ExitCode.VALIDATION_FAILURE
+      );
+    }
+
+    const filePath = this.getIssueRecordPath(record.key);
+    writeAtomicJson(filePath, validated.data);
+  }
+
+  public async listIssueRecords(): Promise<IssueRecord[]> {
+    const issuesDir = path.join(this.metadataRoot, 'issues');
+    if (!fs.existsSync(issuesDir)) {
+      return [];
+    }
+
+    const files = fs.readdirSync(issuesDir).filter((f) => f.endsWith('.json'));
+    const issues: IssueRecord[] = [];
+
+    for (const file of files) {
+      const fullPath = path.join(issuesDir, file);
+      try {
+        const raw = readJson<unknown>(fullPath);
+        const parsed = IssueRecordSchema.safeParse(raw);
+        if (parsed.success) {
+          issues.push(parsed.data as IssueRecord);
+        }
+      } catch {
+        // ignore unparseable
+      }
+    }
+
+    return issues;
+  }
+
+  public async deleteIssueRecord(key: string): Promise<void> {
+    const filePath = this.getIssueRecordPath(key);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  }
 }
+
 
 
 
