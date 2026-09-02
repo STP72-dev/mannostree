@@ -1,24 +1,27 @@
 # AGENTS.md
 
 ## Purpose
-This repository builds **Mannostree**, a developer CLI for safe, explicit, git-worktree-based parallel development.
+This repository builds **Mannostree**, a developer CLI and autonomous agent orchestration platform for safe, explicit, git-worktree-based parallel development.
 
 The tool manages:
-- isolated worktree lifecycle
-- explicit base-branch selection
-- per-worktree metadata
-- parallel variant experiments for the same feature
-- comparison and winner selection
-- optional agent-oriented task artifacts and publish flows
+- isolated worktree lifecycle and base-branch resolution
+- per-worktree metadata and transaction write-ahead journaling
+- parallel variant experiments, automated benchmark matrix evaluation, and Pareto winner selection
+- autonomous agent dispatch, clean-room container sandboxes (Docker/Podman), and contract scorecards
+- distributed fleet synchronization, 3-way semantic conflict matrices, tiering, leases, and auto-archive
+- multi-host remote git publishing (GitHub Enterprise, GitLab, Gitea, Bitbucket)
+- cross-repository poly-worktree coordination and synchronized release manifests
+- bi-directional issue tracker synchronization (Jira REST v3, Linear GraphQL, GitHub Issues, Generic Webhooks)
 
 ---
 
 ## What agents should optimize for
-1. **Safety first** — no hidden branch selection, no silent deletion, no auto-merge.
+1. **Safety first** — no hidden branch selection, no silent deletion, no auto-merge, and strict flag separation (`--discard-uncommitted --yes`).
 2. **Explicit state** — every important lifecycle change must be reflected in metadata.
-3. **Reproducibility** — commands, artifacts, and outputs should be deterministic and reviewable.
-4. **Small blast radius** — prefer narrow, reversible changes over broad refactors unless the task requires otherwise.
-5. **Artifact-first workflow** — durable files beat chat memory.
+3. **Reproducibility** — commands, artifacts, receipts, and scorecards must be deterministic and reviewable.
+4. **Small blast radius** — prefer narrow, reversible changes over broad refactors.
+5. **Artifact-first workflow** — durable files (`.task/task-contract.md`, `.task/RESULTS.md`, `.task/sandbox-receipt.json`) beat chat memory.
+6. **Zero-secret leakage** — never persist API tokens (Jira, Linear, GitHub, GitLab, Gitea, Bitbucket) in metadata or task files.
 
 ---
 
@@ -28,7 +31,7 @@ The tool manages:
 - **Parallel variants are first-class.** Variants for the same feature use distinct experiment branches and worktrees.
 - **No automatic merge of any variant.** Selection and publish are separate steps.
 - **Do not auto-delete losing variants.** Preserve them until the user explicitly cleans them up.
-- **Do not assume the implementation stack.** Inspect the repository first; if the stack is not yet established, make the smallest reasonable scaffold change and document assumptions.
+- **Strict Flag Separation Rule**: Destructive cleanup requires `--discard-uncommitted --yes`; `--force` only bypasses non-content operational blockers.
 - **Keep docs and metadata aligned with behavior.** If code changes lifecycle semantics, update the relevant docs and schema definitions in the same change.
 
 ---
@@ -37,39 +40,73 @@ The tool manages:
 
 ### Core domain objects
 Agents should think in terms of these first-class objects:
-- **worktree record**
-- **experiment record**
-- **registry**
-- **artifact pack**
+- **worktree record** (`.mannostree/worktrees/<id>.json`)
+- **experiment record** (`.mannostree/experiments/<feature>.json`)
+- **registry** (`.mannostree/registry.json`)
+- **lease lock** (`.mannostree/leases/<id>.json`)
+- **agent session** (`.mannostree/sessions/<sessionId>.json`)
+- **sandbox receipt** (`.task/sandbox-receipt.json`)
+- **poly manifest & links** (`.mannostree.poly.yml`, `.mannostree/poly-links.json`)
+- **issue record** (`.mannostree/issues/<KEY>.json`)
+- **artifact pack** (`.task/`)
 - **publish state**
 
 ### Canonical concepts
 - single workspace flow
-- parallel variant flow
-- explicit winner selection
-- recoverable state
-- dry-run support
-- safe cleanup
+- parallel variant flow & Pareto matrix evaluation
+- autonomous agent execution & verification scorecard
+- distributed fleet sync & conflict collision matrix
+- lifecycle tiering, leases & auto-archive retention
+- multi-host git publishing & release candidate merge-sync
+- clean-room container sandboxing (Docker/Podman/Process)
+- cross-repo poly-worktrees & package inter-wiring
+- bi-directional issue tracker sync & drift inspection
+- recoverable state & transaction journal rollback
+- universal dry-run support & safe cleanup
 
 ---
 
-## Expected repository areas
-Until the final repo layout exists, treat this as the target structure:
+## Repository layout
 
 ```text
 .
-├── AGENTS.md
-├── CLAUDE.md
-├── README.md
+├── AGENTS.md                       # Agent constraints & operational guidelines
+├── CLAUDE.md                       # Architectural context & design rules
+├── GEMINI.md                       # Technology inventory & development guidelines
+├── README.md                       # Product overview, feature matrix & quickstart
 ├── docs/
-├── src/                  # CLI/app code
-├── tests/                # automated tests
-├── .mannostree/          # metadata
-├── .worktrees/           # spawned worktrees (runtime)
-└── .task/                # per-worktree artifacts when applicable
+│   ├── USER_MANUAL.md              # Complete Operator & Developer User Manual
+│   ├── 01-arch-design/             # Module boundaries, schemas & architecture
+│   └── 02-project-kickoff/         # Product specs & roadmap history
+├── specs/                          # 10-Movement feature specifications & verification reports
+│   ├── 001-safety-lifecycle-recovery/
+│   ├── 002-agent-contract-runner/
+│   ├── 003-benchmark-matrix-eval/
+│   ├── 004-fleet-sync-conflict-matrix/
+│   ├── 005-fleet-tier-auto-archive/
+│   ├── 006-parallel-publish-merge-sync/
+│   ├── 007-multi-host-adapters/
+│   ├── 008-sandboxed-container-execution/
+│   ├── 009-cross-repo-poly-worktree/
+│   └── 010-issue-tracker-sync/
+├── src/                            # TypeScript source codebase
+│   ├── cli/                        # Commander CLI commands & output formatters
+│   ├── config/                     # Configuration loader & Zod schemas
+│   ├── core/                       # Orchestrator, doctor, setup & task engines
+│   ├── git/                        # Git engine, branch resolver & worktree driver
+│   ├── metadata/                   # Metadata store, journal & validation schemas
+│   ├── parallel/                   # Parallel engine, matrix eval & handoff
+│   ├── agent/                      # Agent runner, scorecard & execution engine
+│   ├── fleet/                      # Fleet sync, conflict matrix, tiering, leases & auto-archive
+│   ├── publish/                    # Multi-host publishing adapters & release merger
+│   ├── sandbox/                    # Container runtime drivers (Docker, Podman, Process)
+│   ├── poly/                       # Cross-repo poly-worktree engine & linkers
+│   └── issues/                     # Pluggable issue tracker adapters & sync engine
+├── tests/                          # Vitest unit & integration test suites
+├── .mannostree/                    # Runtime metadata (registry, worktrees, sessions, leases)
+├── .worktrees/                     # Mounted git worktrees (runtime)
+└── .task/                          # Per-worktree artifacts when applicable
 ```
-
-If the real layout differs, follow the real layout and update this file when the difference becomes durable.
 
 ---
 
@@ -90,97 +127,37 @@ If the real layout differs, follow the real layout and update this file when the
 - `.worktrees/<name>` for single-path work
 - `.worktrees/<feature>-vN` for parallel variants
 
-Do not introduce ad-hoc naming unless the task explicitly requires it.
-
 ---
 
-## Command design expectations
-Prefer commands that are:
-- explicit
-- composable
-- script-friendly
-- dry-run capable
-- machine-readable when needed (`--json`, `--yaml`, or equivalent)
+## Command families
 
-Core command families expected in this project:
-- `spawn`
-- `drop`
-- `list`
-- `info`
-- `status`
-- `sync`
-- `setup`
-- `env`
-- `doctor`
-- `pr`
-- `issue`
-- `parallel`
-- `clean`
-- `recover`
-- `handoff`
-- `task`
-
----
-
-## Metadata expectations
-Metadata is a product feature, not an implementation detail.
-
-Expected persistent records:
-- `.mannostree/registry.json`
-- `.mannostree/worktrees/<id>.json`
-- `.mannostree/experiments/<feature>.json`
-
-When changing metadata behavior:
-- preserve backward compatibility if practical
-- version schema changes
-- keep fields easy to inspect manually
-- favor explicit timestamps and lifecycle states
+- **Workspace**: `spawn`, `drop`, `list`, `info`, `status`, `sync`, `clean`, `archive`, `restore`
+- **Setup & Environment**: `setup`, `env`, `exec`
+- **Parallel Experiments**: `parallel spawn`, `parallel list`, `parallel compare`, `parallel eval`, `parallel pick`, `parallel publish`, `parallel drop`, `parallel handoff`
+- **Autonomous Agents**: `agent dispatch`, `agent status`, `agent cancel`, `agent verify`
+- **Fleet Operations**: `fleet sync`, `fleet conflict-matrix`, `fleet lease`, `fleet tier`, `fleet auto-archive`, `fleet merge-sync`, `fleet publish`, `fleet capacity`
+- **Poly-Worktrees**: `poly spawn`, `poly link`, `poly unlink`, `poly sync`, `poly status`, `poly exec`, `poly pr`, `poly drop`
+- **Issue Tracker**: `issue ingest`, `issue transition`, `issue comment`, `issue sync`, `issue status`, `issue list`
+- **Publishing & Artifacts**: `pr`, `task`, `handoff`
+- **Diagnostics & Recovery**: `doctor`, `recover`
 
 ---
 
 ## Validation expectations
-Every change should validate the smallest relevant surface area.
-
-Preferred order:
-1. targeted unit validation
-2. command-level validation for affected CLI behavior
-3. integration validation for metadata/worktree behavior
-4. docs/examples update if user-facing behavior changed
-
-If the repo later defines exact commands, use those. Until then, do not invent heavyweight verification routines without evidence from the codebase.
+Every change must validate the smallest relevant surface area:
+1. `npm run lint` (strict TypeScript typechecking with zero errors)
+2. Targeted Vitest unit test suites
+3. Integration test suites for CLI and end-to-end worktree behavior
+4. Full test suite run (`npm test` — 100% pass rate across all 78 test suites)
+5. Documentation and schema updates aligned with behavior changes
 
 ---
 
 ## Done means
 A task is done only when all of the following are true:
-- the requested behavior is implemented
-- affected commands or modules are validated appropriately
-- metadata impacts are handled
-- docs stay accurate
-- no hidden destructive behavior was introduced
-- output is reviewable and deterministic enough for follow-up work
-
----
-
-## PR/change expectations
-Changes should usually include:
-- concise summary of what changed
-- why the change was needed
-- what was verified
-- any schema or behavior changes that downstream commands/agents must know
-
-For parallel workflow changes, clearly state:
-- how variants are identified
-- what comparison inputs are used
-- how winner selection is stored
-- whether cleanup semantics changed
-
----
-
-## When to stop and ask
-Pause and escalate if:
-- the task would require changing core lifecycle semantics without a clear decision
-- branch/base resolution becomes ambiguous
-- cleanup behavior could delete user work unexpectedly
-- a proposed change conflicts with the explicit product rules above
-
+- the requested behavior is implemented and strictly typed
+- automated test suites pass at 100%
+- metadata impacts and journal write-ahead logging are handled
+- documentation (User Manual, README, and specs) stays accurate
+- no hidden destructive behavior or secret leakage was introduced
+- output is reviewable and deterministic
