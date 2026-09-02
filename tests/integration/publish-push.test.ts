@@ -22,7 +22,7 @@ describe('Mannostree PR Push Integration with Mock gh Executable', () => {
     execSync('git config user.email "push@example.com"', { cwd: tempRepo });
     execSync(`git remote add origin ${remoteRepo}`, { cwd: tempRepo });
     execSync(`git remote set-url --push origin ${remoteRepo}`, { cwd: tempRepo });
-    execSync('git remote set-url origin https://github.com/ludmansolutions/mannostree.git', { cwd: tempRepo });
+    execSync('git remote set-url origin https://github.com/STP72-dev/mannostree.git', { cwd: tempRepo });
     fs.writeFileSync(path.join(tempRepo, 'README.md'), '# Integration Repo\n', 'utf-8');
     execSync('git add README.md && git commit -m "Initial commit"', { cwd: tempRepo });
     execSync('git push -u origin main', { cwd: tempRepo });
@@ -42,7 +42,7 @@ publish:
     // 3. Setup mock gh executable in a temporary bin folder
     mockBinDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mannostree-mock-gh-'));
     const mockGhScript = `#!/usr/bin/env node
-console.log('https://github.com/ludmansolutions/mannostree/pull/99');
+console.log('https://github.com/STP72-dev/mannostree/pull/99');
 `;
     const mockGhPath = path.join(mockBinDir, 'gh');
     fs.writeFileSync(mockGhPath, mockGhScript, { mode: 0o755 });
@@ -83,8 +83,9 @@ console.log('https://github.com/ludmansolutions/mannostree/pull/99');
     expect(prParsed.command).toBe('pr');
     expect(prParsed.ok).toBe(true);
     expect(prParsed.result.mode).toBe('published');
-    expect(prParsed.result.pr_url).toBe('https://github.com/ludmansolutions/mannostree/pull/99');
+    expect(prParsed.result.pr_url).toBe('https://github.com/STP72-dev/mannostree/pull/99');
     expect(prParsed.result.pr_number).toBe(99);
+
 
     // Verify remote received the pushed branch
     const remoteBranches = execSync(`git --git-dir=${remoteRepo} branch -a`, { encoding: 'utf-8' });

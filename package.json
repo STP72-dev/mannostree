@@ -26,10 +26,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/ludmansolutions/mannostree.git"
+    "url": "https://github.com/STP72-dev/mannostree.git"
   },
-  "author": "Ludman Solutions",
+  "author": "Gabor Szabo <gabor@stp72.com>",
   "license": "MIT",
+
+
   "dependencies": {
     "chalk": "^5.4.1",
     "commander": "^13.1.0",

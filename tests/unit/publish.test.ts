@@ -24,7 +24,7 @@ describe('Publish Engine', () => {
     execSync('git config user.name "Publish Tester"', { cwd: tempRepo });
     execSync(`git remote add origin ${remoteRepo}`, { cwd: tempRepo });
     execSync(`git remote set-url --push origin ${remoteRepo}`, { cwd: tempRepo });
-    execSync('git remote set-url origin https://github.com/ludmansolutions/sample-app.git', { cwd: tempRepo });
+    execSync('git remote set-url origin https://github.com/STP72-dev/sample-app.git', { cwd: tempRepo });
     fs.writeFileSync(path.join(tempRepo, 'README.md'), '# Base Project\n', 'utf-8');
     execSync('git add README.md && git commit -m "Initial commit"', { cwd: tempRepo });
     execSync('git push -u origin main', { cwd: tempRepo });
@@ -74,6 +74,7 @@ describe('Publish Engine', () => {
 
     const prRes = await orchestrator.pr('feature-dry-pr-feat', {
       dryRun: true,
+      title: 'feat: deliver dry-pr-feat',
     });
 
     expect(prRes.ok).toBe(true);
@@ -81,6 +82,7 @@ describe('Publish Engine', () => {
     expect(fs.existsSync(prBodyFile)).toBe(false);
     expect(mockGh).not.toHaveBeenCalled();
   });
+
 
   it('executes git push and invokes gh pr create when --push is passed', async () => {
     await orchestrator.spawn({ name: 'push-feat', baseBranch: 'main', noSetup: true });
@@ -90,7 +92,7 @@ describe('Publish Engine', () => {
     execSync('git add index.ts && git commit -m "feat: add x"', { cwd: wtPath });
 
     mockGh.mockResolvedValueOnce({
-      stdout: 'https://github.com/ludmansolutions/mannostree/pull/42\n',
+      stdout: 'https://github.com/STP72-dev/mannostree/pull/42\n',
       stderr: '',
     });
 
@@ -102,7 +104,7 @@ describe('Publish Engine', () => {
 
     expect(prRes.ok).toBe(true);
     expect(prRes.result?.mode).toBe('published');
-    expect(prRes.result?.pr_url).toBe('https://github.com/ludmansolutions/mannostree/pull/42');
+    expect(prRes.result?.pr_url).toBe('https://github.com/STP72-dev/mannostree/pull/42');
     expect(prRes.result?.pr_number).toBe(42);
 
     // Verify gh CLI arguments
@@ -121,7 +123,7 @@ describe('Publish Engine', () => {
     const updatedRecord = await orchestrator.store.getWorktree('feature-push-feat');
     expect(updatedRecord?.publish?.pushed).toBe(true);
     expect(updatedRecord?.publish?.pr_number).toBe(42);
-    expect(updatedRecord?.publish?.pr_url).toBe('https://github.com/ludmansolutions/mannostree/pull/42');
+    expect(updatedRecord?.publish?.pr_url).toBe('https://github.com/STP72-dev/mannostree/pull/42');
     expect(updatedRecord?.lifecycle_state).toBe('PR_OPEN');
   });
 
