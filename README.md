@@ -597,6 +597,66 @@ mannostree doctor
 
 ---
 
+### Cross-Repository Poly-Worktree Orchestration (Movement 9)
+
+Mannostree provides multi-repository poly-worktree cluster management for coordinating feature development, package inter-wiring, unified base branch syncing, status matrix reporting, and joint pull request publishing across microservices and packages.
+
+#### Cluster Manifest Configuration (`.mannostree.poly.yml`)
+```yaml
+version: 1
+name: ecommerce-core
+repos:
+  api:
+    path: ./services/api
+    default_base_branch: main
+    role: backend
+  web:
+    path: ./apps/web
+    default_base_branch: main
+    role: frontend
+  types:
+    path: ./packages/types
+    default_base_branch: main
+    role: lib
+links:
+  - source_repo: types
+    target_repo: web
+    strategy: npm # npm | python | go | cargo | symlink
+    package_name: "@corp/types"
+```
+
+#### Poly CLI Workflows
+```bash
+# Atomically spawn synchronized worktrees across all member repositories
+mannostree poly spawn checkout-v2 --base main
+
+# Preview multi-repo worktree creation without modifying disk or git state
+mannostree poly spawn checkout-v2 --dry-run
+
+# Establish local cross-package dependencies between member worktrees
+mannostree poly link checkout-v2
+
+# Remove local dependency links
+mannostree poly unlink checkout-v2
+
+# View composite status matrix across all member repositories
+mannostree poly status checkout-v2
+
+# Synchronize base branches across all member repositories (rebase/merge/ff)
+mannostree poly sync checkout-v2 --strategy rebase
+
+# Concurrently execute commands across all member worktrees
+mannostree poly exec checkout-v2 "npm test" --parallel
+
+# Publish coordinated multi-host PRs with embedded sibling PR release tables
+mannostree poly pr checkout-v2 --push --draft
+
+# Safely drop poly-worktrees across all repositories
+mannostree poly drop checkout-v2 --yes
+```
+
+---
+
 ## Testing & Verification
 
 Run the automated test suite with Vitest:
@@ -614,3 +674,4 @@ npm run coverage
 ## License
 
 MIT
+

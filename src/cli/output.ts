@@ -183,6 +183,19 @@ export function formatDoctorReport(report: DoctorReport): string {
     }
   }
 
+  if (report.poly_repositories && report.poly_repositories.manifest_found) {
+    lines.push(chalk.bold('\nPoly-Repository Clusters & Cross-Links:'));
+    const p = report.poly_repositories;
+    const statusTag = p.manifest_valid && p.accessible_repos === p.total_repos
+      ? chalk.green('[VALID]')
+      : chalk.yellow('[WARNING]');
+    lines.push(`  ${statusTag} Manifest: ${p.manifest_path}`);
+    lines.push(`    ${chalk.dim('Details:')} ${p.details}`);
+    if (p.broken_links_count > 0) {
+      lines.push(`    ${chalk.red(`Broken Links: ${p.broken_links_count}`)}`);
+    }
+  }
+
   if (report.proposed_repairs.length > 0) {
     lines.push(chalk.bold('\nProposed Automated Repairs:'));
     for (const r of report.proposed_repairs) {

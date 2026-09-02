@@ -136,6 +136,37 @@ export const SandboxConfigSchema = z.object({
   user_namespace: z.boolean().default(true),
 });
 
+export const PolyLinkStrategySchema = z.enum(['npm', 'python', 'go', 'cargo', 'symlink']);
+
+export const PolyLinkRuleConfigSchema = z.object({
+  source_repo: z.string(),
+  target_repo: z.string(),
+  strategy: PolyLinkStrategySchema.default('symlink'),
+  package_name: z.string().optional(),
+  target_subpath: z.string().optional(),
+});
+
+export const PolyRepoMemberConfigSchema = z.object({
+  path: z.string(),
+  default_base_branch: z.string().optional(),
+  role: z.enum(['backend', 'frontend', 'lib', 'infra', 'custom']).default('custom'),
+  profile: z.string().optional(),
+  depends_on: z.array(z.string()).default([]),
+});
+
+export const PolyManifestConfigSchema = z.object({
+  version: z.number().default(1),
+  name: z.string(),
+  repos: z.record(z.string(), PolyRepoMemberConfigSchema),
+  links: z.array(PolyLinkRuleConfigSchema).default([]),
+});
+
+export const PolyConfigSchema = z.object({
+  default_manifest: z.string().default('.mannostree.poly.yml'),
+  auto_link_on_spawn: z.boolean().default(true),
+  unlink_on_drop: z.boolean().default(true),
+});
+
 export const MannostreeConfigSchema = z.object({
   version: z.number().default(1),
   default_base_branch: z.string().default('main'),
@@ -162,6 +193,7 @@ export const MannostreeConfigSchema = z.object({
   agent: AgentConfigSchema.default({}),
   fleet: FleetConfigSchema.default({}),
   sandbox: SandboxConfigSchema.default({}),
+  poly: PolyConfigSchema.default({}),
   integrations: IntegrationsConfigSchema.optional(),
   tags: z
     .object({
@@ -177,6 +209,8 @@ export type FleetConfig = z.infer<typeof FleetConfigSchema>;
 export type FleetPolicyConfig = z.infer<typeof FleetPolicyConfigSchema>;
 export type SandboxConfig = z.infer<typeof SandboxConfigSchema>;
 export type SandboxResourceLimitsConfig = z.infer<typeof SandboxResourceLimitsConfigSchema>;
+export type PolyConfig = z.infer<typeof PolyConfigSchema>;
+
 
 
 

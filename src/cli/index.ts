@@ -21,6 +21,7 @@ import { registerHandoffCommand } from './commands/handoff.js';
 import { registerArchiveCommand } from './commands/archive.js';
 import { registerAgentCommand } from './commands/agent.js';
 import { registerFleetCommand } from './commands/fleet.js';
+import { registerPolyCommands } from './commands/poly.js';
 
 import { ExitCode, GlobalOptions, MannostreeError } from '../types/index.js';
 
@@ -70,9 +71,10 @@ export function createProgram(): Command {
   registerTaskCommand(program);
   registerHandoffCommand(program);
 
-  // Movement 1 & Movement 3 commands
+  // Movement 1, 3 & 9 commands
   registerAgentCommand(program);
   registerFleetCommand(program);
+  registerPolyCommands(program);
 
   return program;
 }

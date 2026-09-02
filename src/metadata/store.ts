@@ -8,6 +8,10 @@ import {
   AgentSessionRecordSchema,
   WorkspaceLeaseSchema,
   ReleaseManifestRecordSchema,
+  PolyRegistryRecordSchema,
+  PolyLinksFileRecordSchema,
+  PolyReleaseManifestSchema,
+  PolyWorktreeGroupRecordSchema,
 } from './schema.js';
 import {
   ExitCode,
@@ -18,6 +22,10 @@ import {
   AgentSessionRecord,
   WorkspaceLease,
   ReleaseManifestRecord,
+  PolyRegistryRecord,
+  PolyLinksFileRecord,
+  PolyReleaseManifest,
+  PolyWorktreeGroupRecord,
 } from '../types/index.js';
 
 import { TransactionJournal } from './journal.js';
@@ -506,7 +514,156 @@ export class MetadataStore {
       fs.unlinkSync(filePath);
     }
   }
+
+  // --------------------------------------------------------------------------
+  // Movement 9: Poly Registry & Link Store Methods
+  // --------------------------------------------------------------------------
+
+  public getPolyRegistryPath(): string {
+    return path.join(this.metadataRoot, 'poly-registry.json');
+  }
+
+  public async getPolyRegistry(): Promise<PolyRegistryRecord> {
+    const filePath = this.getPolyRegistryPath();
+    if (!fs.existsSync(filePath)) {
+      const init: PolyRegistryRecord = {
+        version: 1,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        poly_groups: {},
+      };
+      return init;
+    }
+
+    const data = readJson<unknown>(filePath);
+    const parsed = PolyRegistryRecordSchema.safeParse(data);
+    if (!parsed.success) {
+      throw new MannostreeError(
+        `Invalid poly-registry schema in ${filePath}:\n${parsed.error.message}`,
+        ExitCode.METADATA_INCONSISTENCY
+      );
+    }
+    return parsed.data as PolyRegistryRecord;
+  }
+
+  public async savePolyRegistry(record: PolyRegistryRecord): Promise<void> {
+    const validated = PolyRegistryRecordSchema.safeParse(record);
+    if (!validated.success) {
+      throw new MannostreeError(
+        `Poly registry validation failed: ${validated.error.message}`,
+        ExitCode.VALIDATION_FAILURE
+      );
+    }
+
+    const filePath = this.getPolyRegistryPath();
+    writeAtomicJson(filePath, validated.data);
+  }
+
+  public async getPolyGroup(feature: string): Promise<PolyWorktreeGroupRecord | null> {
+    const registry = await this.getPolyRegistry();
+    return registry.poly_groups[feature] || null;
+  }
+
+  public async savePolyGroup(group: PolyWorktreeGroupRecord): Promise<void> {
+    const validated = PolyWorktreeGroupRecordSchema.safeParse(group);
+    if (!validated.success) {
+      throw new MannostreeError(
+        `Poly worktree group validation failed for '${group.feature}': ${validated.error.message}`,
+        ExitCode.VALIDATION_FAILURE
+      );
+    }
+
+    const registry = await this.getPolyRegistry();
+    registry.poly_groups[group.feature] = validated.data as PolyWorktreeGroupRecord;
+    registry.updated_at = new Date().toISOString();
+    await this.savePolyRegistry(registry);
+  }
+
+  public async deletePolyGroup(feature: string): Promise<void> {
+    const registry = await this.getPolyRegistry();
+    if (registry.poly_groups[feature]) {
+      delete registry.poly_groups[feature];
+      registry.updated_at = new Date().toISOString();
+      await this.savePolyRegistry(registry);
+    }
+  }
+
+  public getPolyLinksPath(): string {
+    return path.join(this.metadataRoot, 'poly-links.json');
+  }
+
+  public async getPolyLinks(): Promise<PolyLinksFileRecord> {
+    const filePath = this.getPolyLinksPath();
+    if (!fs.existsSync(filePath)) {
+      const init: PolyLinksFileRecord = {
+        version: 1,
+        updated_at: new Date().toISOString(),
+        links: {},
+      };
+      return init;
+    }
+
+    const data = readJson<unknown>(filePath);
+    const parsed = PolyLinksFileRecordSchema.safeParse(data);
+    if (!parsed.success) {
+      throw new MannostreeError(
+        `Invalid poly-links schema in ${filePath}:\n${parsed.error.message}`,
+        ExitCode.METADATA_INCONSISTENCY
+      );
+    }
+    return parsed.data as PolyLinksFileRecord;
+  }
+
+  public async savePolyLinks(record: PolyLinksFileRecord): Promise<void> {
+    const validated = PolyLinksFileRecordSchema.safeParse(record);
+    if (!validated.success) {
+      throw new MannostreeError(
+        `Poly links validation failed: ${validated.error.message}`,
+        ExitCode.VALIDATION_FAILURE
+      );
+    }
+
+    const filePath = this.getPolyLinksPath();
+    writeAtomicJson(filePath, validated.data);
+  }
+
+  public getPolyReleaseManifestPath(feature: string): string {
+    const slug = feature.replace(/\//g, '_');
+    const polyReleasesDir = path.join(this.metadataRoot, 'poly-releases');
+    return path.join(polyReleasesDir, `${slug}.json`);
+  }
+
+  public async getPolyReleaseManifest(feature: string): Promise<PolyReleaseManifest | null> {
+    const filePath = this.getPolyReleaseManifestPath(feature);
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+
+    const data = readJson<unknown>(filePath);
+    const parsed = PolyReleaseManifestSchema.safeParse(data);
+    if (!parsed.success) {
+      throw new MannostreeError(
+        `Invalid poly release manifest schema for ${feature} in ${filePath}:\n${parsed.error.message}`,
+        ExitCode.METADATA_INCONSISTENCY
+      );
+    }
+    return parsed.data as PolyReleaseManifest;
+  }
+
+  public async savePolyReleaseManifest(manifest: PolyReleaseManifest): Promise<void> {
+    const validated = PolyReleaseManifestSchema.safeParse(manifest);
+    if (!validated.success) {
+      throw new MannostreeError(
+        `Poly release manifest validation failed for ${manifest.feature}: ${validated.error.message}`,
+        ExitCode.VALIDATION_FAILURE
+      );
+    }
+
+    const filePath = this.getPolyReleaseManifestPath(manifest.feature);
+    writeAtomicJson(filePath, validated.data);
+  }
 }
+
 
 
 

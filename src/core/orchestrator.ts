@@ -76,6 +76,7 @@ import {
   SandboxRegistry,
   writeSandboxReceipt,
 } from '../sandbox/index.js';
+import { PolyEngine, PolyLinkEngine, PolyPublishEngine } from '../poly/index.js';
 
 export interface SpawnOptions {
   name: string;
@@ -94,6 +95,10 @@ export interface ListOptions {
   archived?: boolean;
 }
 
+export interface InfoOptions {
+  worktreeId?: string;
+}
+
 export interface DropOptions {
   keepBranch?: boolean;
   force?: boolean;
@@ -103,12 +108,6 @@ export interface DropOptions {
 
 export interface StatusOptions {
   fetch?: boolean;
-}
-
-export interface SyncOptions {
-  strategy?: 'rebase' | 'merge' | 'ff-only';
-  fetch?: boolean;
-  dryRun?: boolean;
 }
 
 export interface DoctorOptions {
@@ -124,6 +123,16 @@ export interface CleanOptions {
   force?: boolean;
   yes?: boolean;
   dryRun?: boolean;
+}
+
+export interface SyncOptions {
+  strategy?: 'rebase' | 'merge' | 'ff-only';
+  fetch?: boolean;
+  dryRun?: boolean;
+}
+
+export interface DiffOptions {
+  statOnly?: boolean;
 }
 
 export interface RecoverOptions {
@@ -174,6 +183,9 @@ export class MannostreeOrchestrator {
   public matrixEvaluator: MatrixEvaluator;
   public fleetEngine: FleetEngine;
   public sandboxRegistry: SandboxRegistry;
+  public polyEngine: PolyEngine;
+  public polyLinkEngine: PolyLinkEngine;
+  public polyPublishEngine: PolyPublishEngine;
 
   constructor(
     public repoRoot: string,
@@ -206,6 +218,9 @@ export class MannostreeOrchestrator {
     this.matrixEvaluator = new MatrixEvaluator(repoRoot, this.git, this.store, config);
     this.fleetEngine = new FleetEngine(repoRoot, config, this.git, this.store);
     this.sandboxRegistry = createDefaultSandboxRegistry();
+    this.polyLinkEngine = new PolyLinkEngine(this.store);
+    this.polyEngine = new PolyEngine(config, this.store, this.git, this.polyLinkEngine, this.sandboxRegistry);
+    this.polyPublishEngine = new PolyPublishEngine(config, this.store, this.git);
   }
 
 

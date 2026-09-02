@@ -4,12 +4,13 @@ import { MannostreeConfig } from '../config/schema.js';
 import { GitEngine } from '../git/engine.js';
 import { MetadataStore, readJson } from '../metadata/store.js';
 import { WorktreeRecordSchema } from '../metadata/schema.js';
-import { HostHealthStatus, SandboxHealthStatus } from '../types/index.js';
+import { HostHealthStatus, SandboxHealthStatus, PolyHealthStatus } from '../types/index.js';
 import { createDefaultAdapterRegistry } from '../adapters/index.js';
 import {
   SandboxRegistry,
   createDefaultSandboxRegistry,
 } from '../sandbox/index.js';
+import { findPolyManifest, loadPolyManifest } from '../poly/manifest.js';
 
 export type FindingType =
   | 'MISSING_DISK'
@@ -44,6 +45,7 @@ export interface DoctorReport {
   proposed_repairs: ProposedRepair[];
   host_adapters?: HostHealthStatus[];
   sandbox_environments?: SandboxHealthStatus[];
+  poly_repositories?: PolyHealthStatus;
 }
 
 export class DoctorEngine {
@@ -196,6 +198,9 @@ export class DoctorEngine {
     // 6. Audit sandbox container runtimes
     const sandboxEnvironments = await this.auditSandboxEnvironments();
 
+    // 7. Audit poly-repository manifests & links
+    const polyRepositories = await this.auditPolyRepositories();
+
     const errorCount = findings.filter((f) => f.severity === 'error').length;
     const warningCount = findings.filter((f) => f.severity === 'warning').length;
 
@@ -209,7 +214,65 @@ export class DoctorEngine {
       proposed_repairs: proposedRepairs,
       host_adapters: hostAdapters,
       sandbox_environments: sandboxEnvironments,
+      poly_repositories: polyRepositories,
     };
+  }
+
+  public async auditPolyRepositories(): Promise<PolyHealthStatus> {
+    const manifestPath = findPolyManifest(this.repoRoot);
+    if (!manifestPath) {
+      return {
+        manifest_found: false,
+        manifest_valid: false,
+        total_repos: 0,
+        accessible_repos: 0,
+        broken_links_count: 0,
+        details: 'No .mannostree.poly.yml manifest present.',
+      };
+    }
+
+    try {
+      const { manifest, manifestDir } = loadPolyManifest(manifestPath, this.repoRoot);
+      const totalRepos = Object.keys(manifest.repos).length;
+      let accessibleRepos = 0;
+
+      for (const [name, cfg] of Object.entries(manifest.repos)) {
+        const absPath = path.resolve(manifestDir, cfg.path);
+        if (fs.existsSync(absPath)) {
+          accessibleRepos++;
+        }
+      }
+
+      const allLinks = await this.store.getPolyLinks();
+      let brokenLinksCount = 0;
+      for (const list of Object.values(allLinks.links)) {
+        for (const link of list) {
+          if (link.status === 'failed') {
+            brokenLinksCount++;
+          }
+        }
+      }
+
+      return {
+        manifest_found: true,
+        manifest_path: manifestPath,
+        manifest_valid: true,
+        total_repos: totalRepos,
+        accessible_repos: accessibleRepos,
+        broken_links_count: brokenLinksCount,
+        details: `${accessibleRepos}/${totalRepos} member repositories accessible.`,
+      };
+    } catch (err: any) {
+      return {
+        manifest_found: true,
+        manifest_path: manifestPath,
+        manifest_valid: false,
+        total_repos: 0,
+        accessible_repos: 0,
+        broken_links_count: 0,
+        details: `Manifest syntax/schema error: ${err.message}`,
+      };
+    }
   }
 
   public async auditSandboxEnvironments(): Promise<SandboxHealthStatus[]> {

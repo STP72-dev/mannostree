@@ -1,4 +1,10 @@
 import { z } from 'zod';
+import {
+  PolyLinkStrategySchema,
+  PolyLinkRuleConfigSchema,
+  PolyRepoMemberConfigSchema,
+  PolyManifestConfigSchema,
+} from '../config/schema.js';
 
 export const TaskMetadataSchema = z.object({
   source_type: z.enum(['issue', 'file', 'manual']).optional(),
@@ -760,6 +766,87 @@ export const SandboxHealthStatusSchema = z.object({
   details: z.string().optional(),
   error: z.string().optional(),
 });
+
+// --------------------------------------------------------------------------
+// Movement 9: Cross-Repository Poly-Worktree Schemas
+// --------------------------------------------------------------------------
+
+export const PolyWorktreeMemberInstanceSchema = z.object({
+  repo_name: z.string(),
+  repo_path: z.string(),
+  worktree_id: z.string(),
+  worktree_path: z.string(),
+  branch: z.string(),
+  base_branch: z.string(),
+  head_sha: z.string().optional(),
+  status: z.enum(['active', 'synced', 'dirty', 'failed', 'cleaned']),
+});
+
+export const PolyLinkRecordSchema = z.object({
+  id: z.string(),
+  feature: z.string(),
+  source_repo: z.string(),
+  target_repo: z.string(),
+  strategy: PolyLinkStrategySchema,
+  source_path: z.string(),
+  target_path: z.string(),
+  package_name: z.string().optional(),
+  created_at: z.string(),
+  status: z.enum(['linked', 'unlinked', 'failed']),
+  backup_snapshot: z.string().optional(),
+});
+
+export const PolyWorktreeGroupRecordSchema = z.object({
+  version: z.number().default(1),
+  feature: z.string(),
+  manifest_name: z.string(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  members: z.record(PolyWorktreeMemberInstanceSchema),
+  active_links: z.array(PolyLinkRecordSchema).default([]),
+  status: z.enum(['active', 'degraded', 'cleaned']).default('active'),
+});
+
+export const PolyRegistryRecordSchema = z.object({
+  version: z.number().default(1),
+  created_at: z.string(),
+  updated_at: z.string(),
+  poly_groups: z.record(PolyWorktreeGroupRecordSchema).default({}),
+});
+
+export const PolyLinksFileRecordSchema = z.object({
+  version: z.number().default(1),
+  updated_at: z.string(),
+  links: z.record(z.array(PolyLinkRecordSchema)).default({}),
+});
+
+export const PolyReleaseManifestSchema = z.object({
+  version: z.number().default(1),
+  feature: z.string(),
+  published_at: z.string(),
+  members: z.array(
+    z.object({
+      repo_name: z.string(),
+      branch: z.string(),
+      base_branch: z.string(),
+      pr_number: z.number().int().nullable().optional(),
+      pr_url: z.string().nullable().optional(),
+      head_sha: z.string(),
+    })
+  ),
+  joint_release_table_markdown: z.string(),
+});
+
+export const PolyHealthStatusSchema = z.object({
+  manifest_found: z.boolean(),
+  manifest_path: z.string().optional(),
+  manifest_valid: z.boolean(),
+  total_repos: z.number().int().nonnegative(),
+  accessible_repos: z.number().int().nonnegative(),
+  broken_links_count: z.number().int().nonnegative(),
+  details: z.string(),
+});
+
 
 
 

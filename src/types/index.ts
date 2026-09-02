@@ -952,6 +952,192 @@ export interface SandboxHealthStatus {
   error?: string;
 }
 
+// --------------------------------------------------------------------------
+// Movement 9: Cross-Repository Poly-Worktree Types
+// --------------------------------------------------------------------------
+
+export type PolyLinkStrategy = 'npm' | 'python' | 'go' | 'cargo' | 'symlink';
+
+export interface PolyRepoMemberConfig {
+  path: string;
+  default_base_branch?: string;
+  role?: 'backend' | 'frontend' | 'lib' | 'infra' | 'custom';
+  profile?: string;
+  depends_on?: string[];
+}
+
+export interface PolyLinkRule {
+  source_repo: string;
+  target_repo: string;
+  strategy: PolyLinkStrategy;
+  package_name?: string;
+  target_subpath?: string;
+}
+
+export interface PolyManifestConfig {
+  version: number;
+  name: string;
+  repos: Record<string, PolyRepoMemberConfig>;
+  links?: PolyLinkRule[];
+}
+
+export interface PolyWorktreeMemberInstance {
+  repo_name: string;
+  repo_path: string;
+  worktree_id: string;
+  worktree_path: string;
+  branch: string;
+  base_branch: string;
+  head_sha?: string;
+  status: 'active' | 'synced' | 'dirty' | 'failed' | 'cleaned';
+}
+
+export interface PolyWorktreeGroupRecord {
+  version: number;
+  feature: string;
+  manifest_name: string;
+  created_at: string;
+  updated_at: string;
+  members: Record<string, PolyWorktreeMemberInstance>;
+  active_links: PolyLinkRecord[];
+  status: 'active' | 'degraded' | 'cleaned';
+}
+
+export interface PolyRegistryRecord {
+  version: number;
+  created_at: string;
+  updated_at: string;
+  poly_groups: Record<string, PolyWorktreeGroupRecord>;
+}
+
+export interface PolyLinkRecord {
+  id: string;
+  feature: string;
+  source_repo: string;
+  target_repo: string;
+  strategy: PolyLinkStrategy;
+  source_path: string;
+  target_path: string;
+  package_name?: string;
+  created_at: string;
+  status: 'linked' | 'unlinked' | 'failed';
+  backup_snapshot?: string;
+}
+
+export interface PolyLinksFileRecord {
+  version: number;
+  updated_at: string;
+  links: Record<string, PolyLinkRecord[]>;
+}
+
+export interface PolySpawnOptions {
+  feature: string;
+  base?: string;
+  manifest?: string;
+  noLink?: boolean;
+  noSetup?: boolean;
+  dryRun?: boolean;
+}
+
+export interface PolyDropOptions {
+  feature: string;
+  manifest?: string;
+  keepBranch?: boolean;
+  force?: boolean;
+  discardUncommitted?: boolean;
+  yes?: boolean;
+  dryRun?: boolean;
+}
+
+export interface PolyLinkOptions {
+  feature: string;
+  manifest?: string;
+  strategy?: PolyLinkStrategy;
+  dryRun?: boolean;
+}
+
+export interface PolySyncOptions {
+  feature: string;
+  manifest?: string;
+  strategy?: 'rebase' | 'merge' | 'ff-only';
+  fetch?: boolean;
+  dryRun?: boolean;
+}
+
+export interface PolyStatusOptions {
+  feature?: string;
+  manifest?: string;
+  fetch?: boolean;
+  dryRun?: boolean;
+}
+
+export interface PolyMemberStatusSummary {
+  repo_name: string;
+  repo_path: string;
+  branch: string;
+  base_branch: string;
+  head_sha?: string;
+  ahead: number;
+  behind: number;
+  dirty: boolean;
+  status: string;
+}
+
+export interface PolyStatusSummary {
+  feature: string;
+  manifest_name: string;
+  members: PolyMemberStatusSummary[];
+  active_links: PolyLinkRecord[];
+  healthy: boolean;
+}
+
+export interface PolyExecOptions {
+  feature: string;
+  command: string;
+  args?: string[];
+  manifest?: string;
+  parallel?: boolean;
+  repo?: string;
+  sandbox?: SandboxRuntimeType;
+  dryRun?: boolean;
+}
+
+export interface PolyPrOptions {
+  feature: string;
+  manifest?: string;
+  title?: string;
+  draft?: boolean;
+  push?: boolean;
+  remote?: string;
+  dryRun?: boolean;
+}
+
+export interface PolyReleaseManifest {
+  version: number;
+  feature: string;
+  published_at: string;
+  members: Array<{
+    repo_name: string;
+    branch: string;
+    base_branch: string;
+    pr_number?: number | null;
+    pr_url?: string | null;
+    head_sha: string;
+  }>;
+  joint_release_table_markdown: string;
+}
+
+export interface PolyHealthStatus {
+  manifest_found: boolean;
+  manifest_path?: string;
+  manifest_valid: boolean;
+  total_repos: number;
+  accessible_repos: number;
+  broken_links_count: number;
+  details: string;
+}
+
+
 
 
 
