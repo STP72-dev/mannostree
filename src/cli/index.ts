@@ -31,8 +31,9 @@ export function createProgram(): Command {
   program
     .name('mannostree')
     .description('Developer workspace lifecycle manager — git worktrees for parallel task execution and agent workflows')
-    .version('0.1.0')
+    .version('0.1.0-alpha.1')
     .option('--json', 'Structured JSON output')
+
     .option('--yaml', 'Structured YAML output')
     .option('--plain', 'Minimal plain text output')
     .option('-v, --verbose', 'Verbose logging output')
